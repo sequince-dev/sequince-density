@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import logging
+from typing import Callable
+
+import array_api_compat.torch as torch_api
+import torch
+import zuko
+from array_api_compat import is_numpy_namespace
+
+from .base import Flow
+
+logger = logging.getLogger(__name__)
+
+
+class ZukoFlow(Flow):
+    """Zuko-backed flow adapter for Sequince."""
+
+    xp = torch_api
+
+    def __init__(
+        self,
+        dims: int,
+        flow_class: str | Callable = "MAF",
+        particle_transform=None,
+        seed: int = 1234,
+        device: str = "cpu",
+        dtype: torch.dtype | None = None,
+        **kwargs,
+    ) -> None:
+        resolved_dtype = dtype or torch.get_default_dtype()
+        super().__init__(
+            dims=dims,
+            device=torch.device(device),
+            particle_transform=particle_transform,
+        )
+        self.dtype = resolved_dtype
+        self.seed = seed
+        torch.manual_seed(seed)
+
+        if isinstance(flow_class, str):
+            flow_constructor = getattr(zuko.flows, flow_class)
+        else:
+            flow_constructor = flow_class
+
+        hidden_features = kwargs.pop("hidden_features", None)
+        if hidden_features is not None:
+            kwargs["hidden_features"] = list(map(int, hidden_features))
+
+        self._flow = flow_constructor(self.dims, 0, **kwargs)
+        self._flow.to(device=self.device, dtype=self.dtype)
+        if hasattr(self._flow, "compile"):
+            self._flow.compile()
+        logger.info("Initialized Zuko flow:\n%s", self._flow)
+
+    def _as_torch(self, x):
+        return torch.as_tensor(x, dtype=self.dtype, device=self.device)
+
+    @staticmethod
+    def _to_xp(values, xp):
+        if is_numpy_namespace(xp):
+            if isinstance(values, tuple):
+                return tuple(v.detach().cpu().numpy() for v in values)
+            return values.detach().cpu().numpy()
+        if isinstance(values, tuple):
+            return tuple(xp.asarray(v) for v in values)
+        return xp.asarray(values)
+
+    @property
+    def flow(self):
+        return self._flow
+
+    def loss_fn(self, x):
+        return -self.flow().log_prob(x).mean()
+
+    def fit(
+        self,
+        x,
+        context=None,
+        n_epochs: int = 100,
+        lr: float = 1e-3,
+        batch_size: int = 500,
+        validation_fraction: float = 0.2,
+    ) -> "ZukoFlow":
+        x = self._as_torch(x)
+        x_prime = self.fit_particle_transform(x, context=context)
+        indices = torch.randperm(x_prime.shape[0], device=x_prime.device)
+        x_prime = x_prime[indices]
+
+        n_val = int(validation_fraction * x_prime.shape[0])
+        if n_val <= 0 or n_val >= x_prime.shape[0]:
+            x_train = x_prime
+            x_val = x_prime
+        else:
+            x_train = x_prime[:-n_val]
+            x_val = x_prime[-n_val:]
+
+        dataset = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x_train),
+            shuffle=True,
+            batch_size=min(batch_size, x_train.shape[0]),
+        )
+        val_dataset = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(x_val),
+            shuffle=False,
+            batch_size=min(batch_size, x_val.shape[0]),
+        )
+
+        optimizer = torch.optim.Adam(self.flow.parameters(), lr=lr)
+        best_state = None
+        best_val_loss = float("inf")
+
+        for _ in range(n_epochs):
+            self.flow.train()
+            for (x_batch,) in dataset:
+                loss = self.loss_fn(x_batch)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+            self.flow.eval()
+            val_loss = 0.0
+            n_batches = 0
+            for (x_batch,) in val_dataset:
+                with torch.no_grad():
+                    val_loss += self.loss_fn(x_batch).item()
+                n_batches += 1
+
+            avg_val_loss = val_loss / max(n_batches, 1)
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                best_state = {
+                    key: value.detach().clone()
+                    for key, value in self.flow.state_dict().items()
+                }
+
+        if best_state is not None:
+            self.flow.load_state_dict(best_state)
+
+        self.flow.eval()
+        return self
+
+    def sample_and_log_prob(self, n_samples: int, context=None, xp=torch_api):
+        with torch.no_grad():
+            x_prime, log_prob = self.flow().rsample_and_log_prob((n_samples,))
+        x, log_abs_det_jacobian = self.inverse_particle_transform(
+            x_prime, context=context
+        )
+        values = (x, log_prob - log_abs_det_jacobian)
+        return self._to_xp(values, xp)
+
+    def sample(self, n_samples: int, context=None, xp=torch_api):
+        with torch.no_grad():
+            x_prime = self.flow().rsample((n_samples,))
+        x, _ = self.inverse_particle_transform(x_prime, context=context)
+        return self._to_xp(x, xp)
+
+    def log_prob(self, x, context=None, xp=torch_api):
+        x = self._as_torch(x)
+        x_prime, log_abs_det_jacobian = self.forward_particle_transform(
+            x, context=context
+        )
+        values = self.flow().log_prob(x_prime) + log_abs_det_jacobian
+        return self._to_xp(values, xp)
+
+    def forward(self, x, context=None, xp=torch_api):
+        x = self._as_torch(x)
+        x_prime, log_j_rescale = self.forward_particle_transform(
+            x, context=context
+        )
+        z, log_abs_det_jacobian = self.flow().transform.call_and_ladj(x_prime)
+        values = (z, log_abs_det_jacobian + log_j_rescale)
+        return self._to_xp(values, xp)
+
+    def inverse(self, z, context=None, xp=torch_api):
+        z = self._as_torch(z)
+        with torch.no_grad():
+            x_prime, log_abs_det_jacobian = (
+                self.flow().transform.inv.call_and_ladj(z)
+            )
+        x, log_j_rescale = self.inverse_particle_transform(
+            x_prime, context=context
+        )
+        values = (x, log_j_rescale + log_abs_det_jacobian)
+        return self._to_xp(values, xp)
