@@ -94,14 +94,28 @@ flow = ZukoFlow(
 smc, posterior, metadata = make_standard_bayesian_smc(
     log_prior=lambda x, context=None: -0.5 * np.sum(x**2, axis=1),
     log_likelihood=lambda x, context=None: np.zeros(x.shape[0]),
-    particle_transform=FlowTransform(flow),
+    particle_transform=FlowTransform(
+        flow,
+        fit_kwargs={
+            "n_epochs": 100,
+            "lr": 1e-3,
+            "batch_size": 500,
+        },
+    ),
+    mutation_kwargs={"transform_refit": "per-context"},
 )
 
 result = smc.run(initial_state, rng=rng, metadata=metadata)
 ```
 
-A `FlowTransform` is re-fit on the current particle cloud when the mutation
+A `FlowTransform` is fitted on the current particle cloud when the mutation
 step prepares its transform, so you normally pass an unfitted flow adapter.
+The mutation transform fit policy controls its lifetime:
+
+- `always` fits before every mutation call.
+- `per-context` fits once per outer SMC iteration and reuses the flow across
+  repeated or alternating mutation steps.
+- `once` fits once for the lifetime of the mutation step.
 
 ## Flow as a proposal distribution
 
