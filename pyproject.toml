@@ -3,25 +3,38 @@ requires = ["setuptools>=68", "wheel", "setuptools-scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sequince-flows"
-description = "Normalizing flows for sequince"
+name = "sequince-proposals"
+description = "Fitted proposal distributions and flow backends for Sequince"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "Michael J. Williams" }, { name = "Christian Chapman-Bird" }]
 dependencies = [
-    "sequince",
     "array-api-compat>=1.5",
-    "torch>=2",
-    "zuko>=1.6",
+    "numpy>=1.25.2",
+    "orng>=0.2.0a2",
+    "scikit-learn>=1.4",
+    "sequince",
 ]
 dynamic = [
     "version"
 ]
 
+[project.optional-dependencies]
+zuko = [
+    "torch>=2",
+    "zuko>=1.6",
+]
+flowjax = [
+    "jax>0.5.3",
+    "flowjax",
+    "equinox",
+    "h5py>=3",
+]
+
 [project.urls]
-Homepage = "https://github.com/sequince-dev/sequince-flows"
-Repository = "https://github.com/sequince-dev/sequince-flows"
+Homepage = "https://github.com/sequince-dev/sequince-proposals"
+Repository = "https://github.com/sequince-dev/sequince-proposals"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -36,6 +49,7 @@ include = ["sequince*"]
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "torch>=2",
 ]
 dev = [
     "pre-commit",
@@ -56,7 +70,7 @@ extend-select = ["I"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["sequince_flows"]
+packages = ["sequince_proposals"]
 mypy_path = ["src"]
 ignore_missing_imports = true
 warn_unused_configs = true

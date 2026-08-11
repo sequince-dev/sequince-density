@@ -1,3 +1,5 @@
+"""Zuko-backed proposal and flow adapter."""
+
 from __future__ import annotations
 
 import logging

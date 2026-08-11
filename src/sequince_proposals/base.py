@@ -48,7 +48,9 @@ class Flow:
         raise NotImplementedError
 
     def fit_particle_transform(self, x, context=None):
-        self.particle_transform.fit(x, context=context)
+        self.particle_transform = self.particle_transform.fit(
+            x, context=context
+        )
         transformed, _ = self.particle_transform.forward(x, context=context)
         return transformed
 

@@ -1,9 +1,10 @@
-# sequince-flows
+# sequince-proposals
 
-Normalizing-flow backends for `sequince`.
+Fitted proposal distributions and optional normalizing-flow backends for
+`sequince`.
 
-`sequince-flows` provides concrete flow implementations, while `sequince`
-provides the backend-agnostic wrappers:
+The core package provides a scikit-learn-based
+`GaussianMixtureProposal`. Neural-flow integrations are optional.
 
 - `sequince.transforms.FlowTransform` for using a flow as a mutation-space transform
 - `sequince.proposals.FlowProposal` for using a flow as a proposal distribution
@@ -11,13 +12,57 @@ provides the backend-agnostic wrappers:
 ## Installation
 
 ```bash
-pip install sequince sequince-flows
+pip install sequince-proposals
 ```
 
-## Available flows
+## Gaussian-mixture proposal
 
 ```python
-from sequince_flows.zuko import ZukoFlow
+from orng import RandomGenerator
+from sequince_proposals import GaussianMixtureProposal
+
+proposal = GaussianMixtureProposal(n_components=4).fit(particles)
+samples, log_q = proposal.sample_and_log_prob(
+    256,
+    rng=RandomGenerator(seed=123),
+)
+```
+
+Fitting uses scikit-learn's `GaussianMixture`. Inputs may use
+NumPy, PyTorch, JAX, or CuPy arrays; samples and densities are restored to the
+input backend and device. Full covariance matrices, regularization, and
+checkpoint state are supported. Weighted fitting is not currently supported;
+uniform post-resampling populations are the intended input.
+
+## Sequince rejuvenation
+
+`sequince-proposals` depends on `sequince`; Sequince does not depend on this
+package. Inject the proposal into Sequince's backend-agnostic rejuvenation
+step, either directly or through the prebuilt factory:
+
+```python
+from sequince import make_standard_bayesian_smc
+from sequince_proposals import GaussianMixtureProposal
+
+smc, posterior, metadata = make_standard_bayesian_smc(
+    log_prior,
+    log_likelihood,
+    mutation="gmm",
+    mutation_kwargs={
+        "proposal": GaussianMixtureProposal(n_components=8),
+    },
+)
+```
+
+This direct redraw is approximate and deliberately has no Metropolis-Hastings
+correction. Sequince fits it after resampling in the standard step order.
+
+## Available flow backends
+
+Install the Zuko integration with `pip install "sequince-proposals[zuko]"`.
+
+```python
+from sequince_proposals.zuko import ZukoFlow
 ```
 
 `ZukoFlow` wraps flows from `zuko.flows` and satisfies the
@@ -33,7 +78,7 @@ import numpy as np
 
 from sequince import ParticleState, make_standard_bayesian_smc
 from sequince.transforms import AffineTransform, FlowTransform
-from sequince_flows import ZukoFlow
+from sequince_proposals import ZukoFlow
 
 rng = np.random.default_rng(123)
 dims = 2
@@ -71,7 +116,7 @@ import numpy as np
 
 from sequince import TemperedPosterior
 from sequince.proposals import FlowProposal
-from sequince_flows import ZukoFlow
+from sequince_proposals import ZukoFlow
 
 training_particles = np.random.default_rng(123).normal(size=(2000, 2))
 
