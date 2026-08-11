@@ -29,7 +29,7 @@ class Flow:
             else IdentityTransform()
         )
 
-    def fit(self, samples, context=None, **kwargs):
+    def fit(self, samples, context=None):
         raise NotImplementedError
 
     def forward(self, samples, context=None):

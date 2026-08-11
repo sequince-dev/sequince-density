@@ -77,14 +77,14 @@ class ZukoFlow(Flow):
 
     def fit(
         self,
-        x,
+        samples,
         context=None,
         n_epochs: int = 100,
         lr: float = 1e-3,
         batch_size: int = 500,
         validation_fraction: float = 0.2,
     ) -> "ZukoFlow":
-        x = self._as_torch(x)
+        x = self._as_torch(samples)
         x_prime = self.fit_particle_transform(x, context=context)
         indices = torch.randperm(x_prime.shape[0], device=x_prime.device)
         x_prime = x_prime[indices]
