@@ -5,10 +5,8 @@ import pytest
 from orng import RandomGenerator
 from sequince import ParticleState
 from sequince.posterior import TemperedPosterior
-from sequince.prebuilt_samplers import make_standard_bayesian_smc
-from sequince.steps import GaussianMixtureRejuvenation, SystematicResampling
+from sequince.steps import ProposalRejuvenation, SystematicResampling
 from sequince.steps.base import StepContext
-from sequince.steps.mutation import get_mutation_step
 from sequince.transforms import AffineTransform
 
 from sequince_proposals import GaussianMixtureProposal
@@ -57,7 +55,7 @@ def test_rejuvenation_replaces_population_and_refreshes_target(
         log_evidence=4.25,
         evaluation=old_evaluation,
     )
-    step = GaussianMixtureRejuvenation(
+    step = ProposalRejuvenation(
         quadratic_posterior,
         GaussianMixtureProposal(n_components=2),
         transform=AffineTransform(),
@@ -97,7 +95,7 @@ def test_rejuvenation_operates_after_resampling(
     resampled, context, output = SystematicResampling(
         always_resample=True
     ).apply(state, context, rng)
-    step = GaussianMixtureRejuvenation(
+    step = ProposalRejuvenation(
         standard_normal_posterior, GaussianMixtureProposal(n_components=2)
     )
 
@@ -108,42 +106,10 @@ def test_rejuvenation_operates_after_resampling(
     assert np.allclose(updated.weights, 1.0 / len(particles))
 
 
-def test_factory_builds_gmm(standard_normal_posterior) -> None:
-    mutation = get_mutation_step(
-        "gmm",
-        standard_normal_posterior,
-        mutation_kwargs={"proposal": GaussianMixtureProposal(3)},
-    )
-
-    assert isinstance(mutation, GaussianMixtureRejuvenation)
-    assert mutation.proposal.n_components == 3
-
-
-def test_factory_rejects_multiple_steps(standard_normal_posterior) -> None:
-    with pytest.raises(ValueError, match="mutation_n_steps=1"):
-        get_mutation_step(
-            "gmm",
-            standard_normal_posterior,
-            mutation_n_steps=2,
-            mutation_kwargs={"proposal": GaussianMixtureProposal(2)},
-        )
-
-
-def test_prebuilt_sampler_discovers_gmm() -> None:
-    smc, _, _ = make_standard_bayesian_smc(
-        _standard_normal,
-        _zero_likelihood,
-        mutation="gmm",
-        mutation_kwargs={"proposal": GaussianMixtureProposal(2)},
-    )
-
-    assert isinstance(smc._steps[2], GaussianMixtureRejuvenation)  # noqa: SLF001
-
-
 def test_functional_api_is_explicitly_unsupported(
     standard_normal_posterior,
 ) -> None:
-    step = GaussianMixtureRejuvenation(
+    step = ProposalRejuvenation(
         standard_normal_posterior, GaussianMixtureProposal(n_components=1)
     )
     with pytest.raises(NotImplementedError, match="functional/JIT"):
@@ -155,11 +121,11 @@ def test_functional_api_is_explicitly_unsupported(
 def test_rejuvenation_checkpoint_round_trip(
     standard_normal_posterior,
 ) -> None:
-    step = GaussianMixtureRejuvenation(
+    step = ProposalRejuvenation(
         standard_normal_posterior, GaussianMixtureProposal(n_components=2)
     )
     step.apply(ParticleState(_population()), StepContext(t=0), 4)
-    restored = GaussianMixtureRejuvenation(
+    restored = ProposalRejuvenation(
         standard_normal_posterior, GaussianMixtureProposal(n_components=2)
     )
 
