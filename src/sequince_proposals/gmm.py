@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from orng import RandomGenerator
-from sklearn.mixture import GaussianMixture
 
 from ._array import asarray_like, to_numpy
+
+if TYPE_CHECKING:
+    from sklearn.mixture import GaussianMixture
 
 
 def _resolve_rng(rng: RandomGenerator | int | None) -> RandomGenerator:
@@ -61,6 +63,13 @@ class GaussianMixtureProposal:
         self._fit_like: Any | None = None
 
     def _new_model(self) -> GaussianMixture:
+        try:
+            from sklearn.mixture import GaussianMixture
+        except ImportError as exc:
+            raise ImportError(
+                "GaussianMixtureProposal requires scikit-learn. Install the "
+                "GMM extra with `pip install 'sequince-proposals[gmm]'`."
+            ) from exc
         return GaussianMixture(
             n_components=self.n_components,
             covariance_type=self.covariance_type,

@@ -13,7 +13,6 @@ dependencies = [
     "array-api-compat>=1.5",
     "numpy>=1.25.2",
     "orng>=0.2.0a2",
-    "scikit-learn>=1.4",
     "sequince",
 ]
 dynamic = [
@@ -21,6 +20,9 @@ dynamic = [
 ]
 
 [project.optional-dependencies]
+gmm = [
+    "scikit-learn>=1.4",
+]
 zuko = [
     "torch>=2",
     "zuko>=1.6",
@@ -49,6 +51,7 @@ include = ["sequince*"]
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "scikit-learn>=1.4",
     "torch>=2",
 ]
 dev = [

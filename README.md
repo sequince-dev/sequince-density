@@ -3,11 +3,6 @@
 Fitted proposal distributions and optional normalizing-flow backends for
 `sequince`.
 
-The core package provides a scikit-learn-based
-`GaussianMixtureProposal`. Neural-flow integrations are optional.
-
-- `sequince.transforms.FlowTransform` for using a flow as a mutation-space transform
-- `sequince.proposals.FlowProposal` for using a flow as a proposal distribution
 
 ## Installation
 
@@ -16,6 +11,12 @@ pip install sequince-proposals
 ```
 
 ## Gaussian-mixture proposal
+
+Install the scikit-learn integration with:
+
+```bash
+pip install "sequince-proposals[gmm]"
+```
 
 ```python
 from orng import RandomGenerator

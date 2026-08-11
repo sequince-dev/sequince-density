@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import pytest
 from array_api_compat import array_namespace
@@ -75,6 +77,13 @@ def test_regularization_handles_singular_particles() -> None:
 def test_validates_configuration(kwargs, match: str) -> None:
     with pytest.raises(ValueError, match=match):
         GaussianMixtureProposal(**kwargs)
+
+
+def test_missing_sklearn_has_installation_hint(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "sklearn.mixture", None)
+
+    with pytest.raises(ImportError, match=r"sequince-proposals\[gmm\]"):
+        GaussianMixtureProposal(1)
 
 
 def test_validates_fit_inputs() -> None:
