@@ -38,19 +38,15 @@ uniform post-resampling populations are the intended input.
 
 `sequince-proposals` depends on `sequince`; Sequince does not depend on this
 package. Inject the proposal into Sequince's backend-agnostic rejuvenation
-step, either directly or through the prebuilt factory:
+step and place it explicitly after resampling:
 
 ```python
-from sequince import make_standard_bayesian_smc
+from sequince.steps import ProposalRejuvenation
 from sequince_proposals import GaussianMixtureProposal
 
-smc, posterior, metadata = make_standard_bayesian_smc(
-    log_prior,
-    log_likelihood,
-    mutation="gmm",
-    mutation_kwargs={
-        "proposal": GaussianMixtureProposal(n_components=8),
-    },
+rejuvenation = ProposalRejuvenation(
+    posterior,
+    GaussianMixtureProposal(n_components=8),
 )
 ```
 
