@@ -95,6 +95,15 @@ class GaussianMixtureProposal:
     def n_iter(self) -> int:
         return int(getattr(self._model, "n_iter_", 0))
 
+    @property
+    def diagnostics(self) -> dict[str, Any]:
+        """Return fit diagnostics consumed by proposal rejuvenation."""
+        return {
+            "n_components": self.n_components,
+            "converged": self.converged,
+            "n_iter": self.n_iter,
+        }
+
     def fit(
         self,
         particles: Any,
