@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 from array_api_compat import array_namespace
 from orng import RandomGenerator
+from sequince.array_api import to_numpy
 
-from sequince_proposals import GaussianMixtureProposal
-from sequince_proposals._array import to_numpy
+from sequince_proposals.gmm import GaussianMixtureProposal
 
 
 def _bimodal_particles(seed: int = 4, n: int = 600) -> np.ndarray:
@@ -57,6 +57,19 @@ def test_sampling_is_reproducible() -> None:
     np.testing.assert_allclose(first, second)
 
 
+def test_fitting_is_reproducible() -> None:
+    particles = _bimodal_particles()
+    first = GaussianMixtureProposal(2).fit(
+        particles, rng=RandomGenerator(seed=123)
+    )
+    second = GaussianMixtureProposal(2).fit(
+        particles, rng=RandomGenerator(seed=123)
+    )
+
+    np.testing.assert_allclose(first.means, second.means)
+    np.testing.assert_allclose(first.covariances, second.covariances)
+
+
 def test_regularization_handles_singular_particles() -> None:
     values = np.linspace(-1.0, 1.0, 50)
     particles = np.column_stack((values, 2.0 * values))
@@ -101,6 +114,15 @@ def test_rejects_nonuniform_weighted_fit() -> None:
         GaussianMixtureProposal(2).fit(particles, weights=weights)
 
 
+def test_accepts_uniform_weighted_fit() -> None:
+    particles = _bimodal_particles(n=100)
+    weights = np.full(len(particles), 1.0 / len(particles))
+
+    proposal = GaussianMixtureProposal(2).fit(particles, weights=weights)
+
+    assert proposal.converged
+
+
 def test_state_round_trip() -> None:
     fitted = GaussianMixtureProposal(2).fit(_bimodal_particles())
     restored = GaussianMixtureProposal(2)
@@ -134,3 +156,18 @@ def test_preserves_array_api_backend(backend: str) -> None:
     assert array_namespace(log_prob) is array_namespace(particles)
     assert samples.shape == (12, 2)
     assert np.all(np.isfinite(to_numpy(log_prob)))
+
+
+def test_requested_namespace_overrides_fitted_backend() -> None:
+    torch = pytest.importorskip("torch")
+    particles = torch.tensor(_bimodal_particles(n=100), dtype=torch.float32)
+    proposal = GaussianMixtureProposal(2).fit(particles)
+
+    samples, log_prob = proposal.sample_and_log_prob(
+        12,
+        rng=RandomGenerator(seed=31),
+        xp=np,
+    )
+
+    assert isinstance(samples, np.ndarray)
+    assert isinstance(log_prob, np.ndarray)

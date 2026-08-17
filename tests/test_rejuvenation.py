@@ -9,7 +9,7 @@ from sequince.steps import ProposalRejuvenation, SystematicResampling
 from sequince.steps.base import StepContext
 from sequince.transforms import AffineTransform
 
-from sequince_proposals import GaussianMixtureProposal
+from sequince_proposals.gmm import GaussianMixtureProposal
 
 
 def _standard_normal(particles, context=None):

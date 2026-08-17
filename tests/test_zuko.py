@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from sequince.transforms import (
     AffineTransform,
     CompositeTransform,
     FlowTransform,
 )
 
-from sequince_proposals import ZukoFlow
+pytest.importorskip("torch")
+pytest.importorskip("zuko")
+
+from sequince_proposals.flows.zuko import ZukoFlow  # noqa: E402
 
 
 def test_zuko_flow_transform_fits_and_round_trips() -> None:
