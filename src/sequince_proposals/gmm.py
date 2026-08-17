@@ -9,6 +9,7 @@ import numpy as np
 from orng import RandomGenerator
 
 from ._array import asarray_like, to_numpy
+from ._rng import draw_seed
 
 if TYPE_CHECKING:
     from sklearn.mixture import GaussianMixture
@@ -62,7 +63,7 @@ class GaussianMixtureProposal:
         self._model = self._new_model()
         self._fit_like: Any | None = None
 
-    def _new_model(self) -> GaussianMixture:
+    def _new_model(self, *, random_state: int = 0) -> GaussianMixture:
         try:
             from sklearn.mixture import GaussianMixture
         except ImportError as exc:
@@ -76,7 +77,7 @@ class GaussianMixtureProposal:
             reg_covar=self.regularization,
             max_iter=self.max_iter,
             tol=self.tol,
-            random_state=0,
+            random_state=random_state,
         )
 
     def _require_fitted(self) -> GaussianMixture:
@@ -118,6 +119,7 @@ class GaussianMixtureProposal:
         particles: Any,
         context: Any | None = None,
         *,
+        rng: RandomGenerator | int | None = None,
         weights: Any | None = None,
     ) -> GaussianMixtureProposal:
         """Fit the mixture to a two-dimensional particle array."""
@@ -154,7 +156,10 @@ class GaussianMixtureProposal:
                     "fit a post-resampling population with uniform weights."
                 )
 
-        self._model = self._new_model().fit(values)
+        seed = draw_seed(rng)
+        self._model = self._new_model(
+            random_state=0 if seed is None else seed
+        ).fit(values)
         if not np.all(np.isfinite(self._model.covariances_)):
             raise ValueError("Fitted GMM covariance matrices are not finite.")
         for covariance in self._model.covariances_:
@@ -181,6 +186,7 @@ class GaussianMixtureProposal:
         context: Any | None = None,
         *,
         rng: RandomGenerator | int | None = None,
+        xp: Any | None = None,
     ):
         del context
         if n_samples < 1:
@@ -203,6 +209,8 @@ class GaussianMixtureProposal:
         samples = model.means_[components] + np.einsum(
             "nij,nj->ni", cholesky[components], standard_normal
         )
+        if xp is not None:
+            return xp.asarray(samples)
         if self._fit_like is None:  # pragma: no cover
             return samples
         return asarray_like(samples, self._fit_like)
@@ -213,8 +221,14 @@ class GaussianMixtureProposal:
         context: Any | None = None,
         *,
         rng: RandomGenerator | int | None = None,
+        xp: Any | None = None,
     ):
-        samples = self.sample(n_samples, context=context, rng=rng)
+        samples = self.sample(
+            n_samples,
+            context=context,
+            rng=rng,
+            xp=xp,
+        )
         return samples, self.log_prob(samples, context=context)
 
     def state_dict(self) -> dict[str, Any]:
