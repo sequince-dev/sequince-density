@@ -11,8 +11,8 @@ import jax.random as jrandom
 from flowjax.distributions import Normal
 from flowjax.train import fit_to_data
 
-from ._rng import draw_seed
 from .base import Flow
+from .utils import draw_seed
 
 logger = logging.getLogger(__name__)
 

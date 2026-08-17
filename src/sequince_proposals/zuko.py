@@ -9,8 +9,8 @@ import array_api_compat.torch as torch_api
 import torch
 import zuko
 
-from ._torch import torch_random_context
 from .base import Flow
+from .utils import torch_random_context
 
 logger = logging.getLogger(__name__)
 

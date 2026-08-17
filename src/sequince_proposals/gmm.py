@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from orng import RandomGenerator
+from sequince.array_api import asarray, to_numpy
 
-from ._array import asarray_like, to_numpy
-from ._rng import draw_seed
+from .utils import draw_seed
 
 if TYPE_CHECKING:
     from sklearn.mixture import GaussianMixture
@@ -178,7 +178,7 @@ class GaussianMixtureProposal:
         values = to_numpy(particles, dtype=float)
         if values.ndim != 2 or values.shape[1] != model.means_.shape[1]:
             raise ValueError("particles have an incompatible shape.")
-        return asarray_like(model.score_samples(values), particles)
+        return asarray(model.score_samples(values), like=particles)
 
     def sample(
         self,
@@ -213,7 +213,7 @@ class GaussianMixtureProposal:
             return xp.asarray(samples)
         if self._fit_like is None:  # pragma: no cover
             return samples
-        return asarray_like(samples, self._fit_like)
+        return asarray(samples, like=self._fit_like)
 
     def sample_and_log_prob(
         self,
