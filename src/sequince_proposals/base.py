@@ -41,10 +41,10 @@ class Flow:
     def log_prob(self, samples, context=None):
         raise NotImplementedError
 
-    def sample(self, n_samples: int, context=None):
+    def sample(self, n_samples: int, context=None, *, rng=None):
         raise NotImplementedError
 
-    def sample_and_log_prob(self, n_samples: int, context=None):
+    def sample_and_log_prob(self, n_samples: int, context=None, *, rng=None):
         raise NotImplementedError
 
     def fit_particle_transform(self, x, context=None):

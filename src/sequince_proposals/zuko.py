@@ -8,8 +8,8 @@ from typing import Callable
 import array_api_compat.torch as torch_api
 import torch
 import zuko
-from array_api_compat import is_numpy_namespace
 
+from ._torch import torch_random_context
 from .base import Flow
 
 logger = logging.getLogger(__name__)
@@ -58,16 +58,6 @@ class ZukoFlow(Flow):
     def _as_torch(self, x):
         return torch.as_tensor(x, dtype=self.dtype, device=self.device)
 
-    @staticmethod
-    def _to_xp(values, xp):
-        if is_numpy_namespace(xp):
-            if isinstance(values, tuple):
-                return tuple(v.detach().cpu().numpy() for v in values)
-            return values.detach().cpu().numpy()
-        if isinstance(values, tuple):
-            return tuple(xp.asarray(v) for v in values)
-        return xp.asarray(values)
-
     @property
     def flow(self):
         return self._flow
@@ -76,6 +66,27 @@ class ZukoFlow(Flow):
         return -self.flow().log_prob(x).mean()
 
     def fit(
+        self,
+        samples,
+        context=None,
+        n_epochs: int = 100,
+        lr: float = 1e-3,
+        batch_size: int = 500,
+        validation_fraction: float = 0.2,
+        *,
+        rng=None,
+    ) -> "ZukoFlow":
+        with torch_random_context(rng, device=self.device):
+            return self._fit(
+                samples,
+                context=context,
+                n_epochs=n_epochs,
+                lr=lr,
+                batch_size=batch_size,
+                validation_fraction=validation_fraction,
+            )
+
+    def _fit(
         self,
         samples,
         context=None,
@@ -142,39 +153,36 @@ class ZukoFlow(Flow):
         self.flow.eval()
         return self
 
-    def sample_and_log_prob(self, n_samples: int, context=None, xp=torch_api):
-        with torch.no_grad():
+    def sample_and_log_prob(self, n_samples: int, context=None, *, rng=None):
+        with torch_random_context(rng, device=self.device), torch.no_grad():
             x_prime, log_prob = self.flow().rsample_and_log_prob((n_samples,))
         x, log_abs_det_jacobian = self.inverse_particle_transform(
             x_prime, context=context
         )
-        values = (x, log_prob - log_abs_det_jacobian)
-        return self._to_xp(values, xp)
+        return x, log_prob - log_abs_det_jacobian
 
-    def sample(self, n_samples: int, context=None, xp=torch_api):
-        with torch.no_grad():
+    def sample(self, n_samples: int, context=None, *, rng=None):
+        with torch_random_context(rng, device=self.device), torch.no_grad():
             x_prime = self.flow().rsample((n_samples,))
         x, _ = self.inverse_particle_transform(x_prime, context=context)
-        return self._to_xp(x, xp)
+        return x
 
-    def log_prob(self, x, context=None, xp=torch_api):
+    def log_prob(self, x, context=None):
         x = self._as_torch(x)
         x_prime, log_abs_det_jacobian = self.forward_particle_transform(
             x, context=context
         )
-        values = self.flow().log_prob(x_prime) + log_abs_det_jacobian
-        return self._to_xp(values, xp)
+        return self.flow().log_prob(x_prime) + log_abs_det_jacobian
 
-    def forward(self, x, context=None, xp=torch_api):
+    def forward(self, x, context=None):
         x = self._as_torch(x)
         x_prime, log_j_rescale = self.forward_particle_transform(
             x, context=context
         )
         z, log_abs_det_jacobian = self.flow().transform.call_and_ladj(x_prime)
-        values = (z, log_abs_det_jacobian + log_j_rescale)
-        return self._to_xp(values, xp)
+        return z, log_abs_det_jacobian + log_j_rescale
 
-    def inverse(self, z, context=None, xp=torch_api):
+    def inverse(self, z, context=None):
         z = self._as_torch(z)
         with torch.no_grad():
             x_prime, log_abs_det_jacobian = (
@@ -183,5 +191,4 @@ class ZukoFlow(Flow):
         x, log_j_rescale = self.inverse_particle_transform(
             x_prime, context=context
         )
-        values = (x, log_j_rescale + log_abs_det_jacobian)
-        return self._to_xp(values, xp)
+        return x, log_j_rescale + log_abs_det_jacobian
