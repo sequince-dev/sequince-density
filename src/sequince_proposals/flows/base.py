@@ -1,3 +1,5 @@
+"""Shared base class for normalizing-flow adapters."""
+
 from __future__ import annotations
 
 import inspect

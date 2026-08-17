@@ -9,7 +9,7 @@ import numpy as np
 from orng import RandomGenerator
 from sequince.array_api import asarray, to_numpy
 
-from .utils import draw_seed
+from ..utils import draw_seed
 
 if TYPE_CHECKING:
     from sklearn.mixture import GaussianMixture
