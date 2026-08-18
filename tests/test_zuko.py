@@ -8,7 +8,7 @@ from sequince.transforms import (
     FlowTransform,
 )
 
-pytest.importorskip("torch")
+torch = pytest.importorskip("torch")
 pytest.importorskip("zuko")
 
 from sequince_density.flows.zuko import (  # noqa: E402
@@ -55,6 +55,10 @@ def test_zuko_flow_matching_fits_and_round_trips(rng) -> None:
         dims=2,
         hidden_features=[8, 8],
         device="cpu",
+        dtype=torch.float64,
+        atol=1e-8,
+        rtol=1e-8,
+        exact=True,
     )
 
     transform = CompositeTransform(
@@ -66,6 +70,7 @@ def test_zuko_flow_matching_fits_and_round_trips(rng) -> None:
                     "n_epochs": 2,
                     "batch_size": 16,
                     "validation_fraction": 0.25,
+                    "rng": 1234,
                 },
             ),
         ]
@@ -77,7 +82,6 @@ def test_zuko_flow_matching_fits_and_round_trips(rng) -> None:
     assert isinstance(latent, np.ndarray)
     assert latent.shape == particles.shape
     assert log_det.shape == (particles.shape[0],)
-    np.testing.assert_allclose(restored, particles, atol=1e-4, rtol=1e-4)
-    np.testing.assert_allclose(
-        log_det + inverse_log_det, 0.0, atol=1e-4, rtol=1e-4
-    )
+    np.testing.assert_allclose(restored, particles, atol=1e-5, rtol=1e-5)
+    residual = log_det + inverse_log_det
+    assert np.max(np.abs(residual)) < 1e-4
