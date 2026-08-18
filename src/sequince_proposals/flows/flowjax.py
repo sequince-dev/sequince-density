@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from io import BytesIO
 from typing import Any, Callable
 
 import jax
@@ -77,13 +78,40 @@ class FlowJax(Flow):
             dtype=self.dtype,
         )
         fit_key = self._random_key(rng)
-        self._flow, _ = fit_to_data(
+        self._flow, losses = fit_to_data(
             fit_key,
             self._flow,
             transformed,
             **kwargs,
         )
+        self.fit_history = {
+            "training_loss": [float(value) for value in losses["train"]],
+            "validation_loss": [float(value) for value in losses["val"]],
+        }
         return self
+
+    def state_dict(self):
+        import equinox as eqx
+
+        buffer = BytesIO()
+        eqx.tree_serialise_leaves(buffer, self._flow)
+        return {
+            "flow": buffer.getvalue(),
+            "key": self.key,
+            "particle_transform": self.particle_transform,
+            "fit_history": self.fit_history,
+        }
+
+    def load_state_dict(self, state):
+        import equinox as eqx
+
+        self._flow = eqx.tree_deserialise_leaves(
+            BytesIO(state["flow"]), self._flow
+        )
+        self.key = state["key"]
+        if state.get("particle_transform") is not None:
+            self.particle_transform = state["particle_transform"]
+        self.fit_history = dict(state.get("fit_history", self.fit_history))
 
     def forward(self, samples, context=None):
         values = jnp.asarray(samples, dtype=self.dtype)

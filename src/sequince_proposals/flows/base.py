@@ -30,6 +30,10 @@ class Flow:
             if particle_transform is not None
             else IdentityTransform()
         )
+        self.fit_history: dict[str, list[float]] = {
+            "training_loss": [],
+            "validation_loss": [],
+        }
 
     def fit(self, samples, context=None):
         raise NotImplementedError

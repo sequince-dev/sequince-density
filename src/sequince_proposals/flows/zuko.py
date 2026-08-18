@@ -122,14 +122,20 @@ class ZukoFlow(Flow):
         optimizer = torch.optim.Adam(self.flow.parameters(), lr=lr)
         best_state = None
         best_val_loss = float("inf")
+        training_loss = []
+        validation_loss = []
 
         for _ in range(n_epochs):
             self.flow.train()
+            train_loss = 0.0
+            n_train_batches = 0
             for (x_batch,) in dataset:
                 loss = self.loss_fn(x_batch)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                train_loss += loss.item()
+                n_train_batches += 1
 
             self.flow.eval()
             val_loss = 0.0
@@ -140,6 +146,8 @@ class ZukoFlow(Flow):
                 n_batches += 1
 
             avg_val_loss = val_loss / max(n_batches, 1)
+            training_loss.append(train_loss / max(n_train_batches, 1))
+            validation_loss.append(avg_val_loss)
             if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
                 best_state = {
@@ -150,8 +158,29 @@ class ZukoFlow(Flow):
         if best_state is not None:
             self.flow.load_state_dict(best_state)
 
+        self.fit_history = {
+            "training_loss": training_loss,
+            "validation_loss": validation_loss,
+        }
         self.flow.eval()
         return self
+
+    def state_dict(self):
+        return {
+            "flow": {
+                key: value.detach().cpu().clone()
+                for key, value in self.flow.state_dict().items()
+            },
+            "particle_transform": self.particle_transform,
+            "fit_history": self.fit_history,
+        }
+
+    def load_state_dict(self, state):
+        self.flow.load_state_dict(state["flow"])
+        if state.get("particle_transform") is not None:
+            self.particle_transform = state["particle_transform"]
+        self.fit_history = dict(state.get("fit_history", self.fit_history))
+        self.flow.eval()
 
     def sample_and_log_prob(self, n_samples: int, context=None, *, rng=None):
         with torch_random_context(rng, device=self.device), torch.no_grad():
