@@ -3,8 +3,6 @@ from __future__ import annotations
 import pytest
 from orng import RandomGenerator
 
-torch = pytest.importorskip("torch")
-
 from sequince_density.utils import (  # noqa: E402
     draw_seed,
     torch_random_context,
@@ -26,6 +24,7 @@ def test_draw_seed_rejects_unknown_rng() -> None:
 
 
 def test_torch_random_context_is_reproducible_and_restores_state() -> None:
+    torch = pytest.importorskip("torch")
     initial_state = torch.random.get_rng_state().clone()
 
     with torch_random_context(123):
