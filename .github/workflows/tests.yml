@@ -28,6 +28,12 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Checkout sequince-dev/sequince
+      uses: actions/checkout@v7
+      with:
+        repository: sequince-dev/sequince
+        ssh-key: ${{ secrets.SEQUINCE_DEPLOY_KEY }}
+        path: sequince
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -35,6 +41,7 @@ jobs:
         pip install torch --index-url https://download.pytorch.org/whl/cpu
         # Install backends for orng
         # Can't use cupy since it requires CUDA toolkit to be installed
+        pip install ./sequince
         pip install -e . --group test
     - name: Test with pytest
       run: |
