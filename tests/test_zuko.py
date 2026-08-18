@@ -11,7 +11,7 @@ from sequince.transforms import (
 pytest.importorskip("torch")
 pytest.importorskip("zuko")
 
-from sequince_proposals.flows.zuko import ZukoFlow  # noqa: E402
+from sequince_density.flows.zuko import ZukoFlow  # noqa: E402
 
 
 def test_zuko_flow_transform_fits_and_round_trips() -> None:

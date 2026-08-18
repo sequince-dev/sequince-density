@@ -9,7 +9,7 @@ pytest.importorskip("flowjax")
 
 from sequince.transforms import AffineTransform  # noqa: E402
 
-from sequince_proposals.flows.flowjax import FlowJax  # noqa: E402
+from sequince_density.flows.flowjax import FlowJax  # noqa: E402
 
 
 def test_flowjax_fits_samples_and_round_trips() -> None:

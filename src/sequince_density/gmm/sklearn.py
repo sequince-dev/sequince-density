@@ -69,7 +69,7 @@ class GaussianMixtureProposal:
         except ImportError as exc:
             raise ImportError(
                 "GaussianMixtureProposal requires scikit-learn. Install the "
-                "GMM extra with `pip install 'sequince-proposals[gmm]'`."
+                "GMM extra with `pip install 'sequince-density[gmm]'`."
             ) from exc
         return GaussianMixture(
             n_components=self.n_components,

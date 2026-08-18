@@ -5,7 +5,7 @@ from orng import RandomGenerator
 
 torch = pytest.importorskip("torch")
 
-from sequince_proposals.utils import (  # noqa: E402
+from sequince_density.utils import (  # noqa: E402
     draw_seed,
     torch_random_context,
 )

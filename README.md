@@ -1,13 +1,12 @@
-# sequince-proposals
+# sequince-density
 
 Fitted proposal distributions and optional normalizing-flow backends for
 `sequince`.
 
-
 ## Installation
 
 ```bash
-pip install sequince-proposals
+pip install sequince-density
 ```
 
 ## Gaussian-mixture proposal
@@ -15,35 +14,39 @@ pip install sequince-proposals
 Install the scikit-learn integration with:
 
 ```bash
-pip install "sequince-proposals[gmm]"
+pip install "sequince-density[gmm]"
 ```
 
 ```python
 from orng import RandomGenerator
-from sequince_proposals import GaussianMixtureProposal
+from sequince_density import GaussianMixtureProposal
 
-proposal = GaussianMixtureProposal(n_components=4).fit(particles)
+proposal = GaussianMixtureProposal(n_components=4).fit(
+    particles,
+    rng=RandomGenerator(seed=122),
+)
 samples, log_q = proposal.sample_and_log_prob(
     256,
     rng=RandomGenerator(seed=123),
 )
 ```
 
-Fitting uses scikit-learn's `GaussianMixture`. Inputs may use
-NumPy, PyTorch, JAX, or CuPy arrays; samples and densities are restored to the
-input backend and device. Full covariance matrices, regularization, and
-checkpoint state are supported. Weighted fitting is not currently supported;
-uniform post-resampling populations are the intended input.
+Fitting uses scikit-learn's `GaussianMixture`. Inputs may use NumPy, PyTorch,
+JAX, or CuPy arrays; samples and densities are restored to the input backend
+and device unless an explicit `xp` is requested when sampling. Full covariance
+matrices, regularization, and checkpoint state are supported. Weighted fitting
+is not currently supported; uniform post-resampling populations are the
+intended input.
 
 ## Sequince rejuvenation
 
-`sequince-proposals` depends on `sequince`; Sequince does not depend on this
+`sequince-density` depends on `sequince`; Sequince does not depend on this
 package. Inject the proposal into Sequince's backend-agnostic rejuvenation
 step and place it explicitly after resampling:
 
 ```python
 from sequince.steps import ProposalRejuvenation
-from sequince_proposals import GaussianMixtureProposal
+from sequince_density import GaussianMixtureProposal
 
 rejuvenation = ProposalRejuvenation(
     posterior,
@@ -56,14 +59,17 @@ correction. Sequince fits it after resampling in the standard step order.
 
 ## Available flow backends
 
-Install the Zuko integration with `pip install "sequince-proposals[zuko]"`.
+Install the Zuko integration with `pip install "sequince-density[zuko]"` or
+the FlowJAX integration with `pip install "sequince-density[flowjax]"`.
 
 ```python
-from sequince_proposals.zuko import ZukoFlow
+from sequince_density import FlowJax, ZukoFlow
 ```
 
-`ZukoFlow` wraps flows from `zuko.flows` and satisfies the
-`sequince.flows.NormalizingFlow` protocol.
+`ZukoFlow` wraps flows from `zuko.flows`, while `FlowJax` wraps constructors
+from `flowjax.flows`. Both satisfy the `sequince.flows.NormalizingFlow`
+protocol and return arrays in their native backend; `FlowProposal` handles any
+conversion to the SMC particle namespace.
 
 ## Flow as a mutation transform
 
@@ -75,7 +81,7 @@ import numpy as np
 
 from sequince import ParticleState, make_standard_bayesian_smc
 from sequince.transforms import AffineTransform, FlowTransform
-from sequince_proposals import ZukoFlow
+from sequince_density import ZukoFlow
 
 rng = np.random.default_rng(123)
 dims = 2
@@ -127,7 +133,7 @@ import numpy as np
 
 from sequince import TemperedPosterior
 from sequince.proposals import FlowProposal
-from sequince_proposals import ZukoFlow
+from sequince_density import ZukoFlow
 
 training_particles = np.random.default_rng(123).normal(size=(2000, 2))
 
@@ -136,8 +142,9 @@ proposal = FlowProposal(
         dims=2,
         flow_class="MAF",
         hidden_features=[64, 64],
-    )
-).fit(training_particles)
+    ),
+    fit_kwargs={"n_epochs": 100, "lr": 1e-3, "batch_size": 500},
+).fit(training_particles, rng=123)
 
 posterior = TemperedPosterior(
     log_prior=lambda x, context=None: -0.5 * np.sum(x**2, axis=1),
@@ -145,10 +152,17 @@ posterior = TemperedPosterior(
     log_proposal=proposal,
 )
 
-samples, log_q = proposal.sample_and_log_prob(128)
+samples, log_q = proposal.sample_and_log_prob(
+    128,
+    rng=123,
+    xp=np,
+)
 values = posterior.log_prob(samples, context=None)
 ```
 
 `FlowProposal.sample_and_log_prob()` uses the flow backend's native
 implementation when available and otherwise falls back to `sample()` plus
-`log_prob()`.
+`log_prob()`. Both `GaussianMixtureProposal` and a flow wrapped by
+`FlowProposal` satisfy Sequince's `TrainableProposal` protocol, with the same
+`fit`, `sample`, `log_prob`, and `sample_and_log_prob` surface. Stochastic
+fitting and sampling both accept an explicit `rng`.

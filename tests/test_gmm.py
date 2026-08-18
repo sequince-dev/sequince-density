@@ -8,7 +8,7 @@ from array_api_compat import array_namespace
 from orng import RandomGenerator
 from sequince.array_api import to_numpy
 
-from sequince_proposals.gmm import GaussianMixtureProposal
+from sequince_density.gmm import GaussianMixtureProposal
 
 
 def _bimodal_particles(seed: int = 4, n: int = 600) -> np.ndarray:
@@ -95,7 +95,7 @@ def test_validates_configuration(kwargs, match: str) -> None:
 def test_missing_sklearn_has_installation_hint(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "sklearn.mixture", None)
 
-    with pytest.raises(ImportError, match=r"sequince-proposals\[gmm\]"):
+    with pytest.raises(ImportError, match=r"sequince-density\[gmm\]"):
         GaussianMixtureProposal(1)
 
 

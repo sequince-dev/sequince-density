@@ -1,7 +1,7 @@
 import importlib.metadata
 
 try:
-    __version__ = importlib.metadata.version("sequince-proposals")
+    __version__ = importlib.metadata.version("sequince-density")
 except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 

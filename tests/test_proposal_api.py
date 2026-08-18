@@ -7,22 +7,22 @@ from sequince import TrainableProposal
 from sequince.proposals import FlowProposal
 from sequince.steps.context import StepContext
 
-from sequince_proposals import (
+from sequince_density import (
     Flow,
     FlowJax,
     GaussianMixtureProposal,
     ZukoFlow,
 )
-from sequince_proposals.flows import (
+from sequince_density.flows import (
     Flow as SubmoduleFlow,
 )
-from sequince_proposals.flows import (
+from sequince_density.flows import (
     FlowJax as SubmoduleFlowJax,
 )
-from sequince_proposals.flows import (
+from sequince_density.flows import (
     ZukoFlow as SubmoduleZukoFlow,
 )
-from sequince_proposals.gmm import (
+from sequince_density.gmm import (
     GaussianMixtureProposal as SubmoduleGaussianMixtureProposal,
 )
 
