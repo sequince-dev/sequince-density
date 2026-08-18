@@ -53,7 +53,7 @@ class ZukoFlow(Flow):
         self._flow.to(device=self.device, dtype=self.dtype)
         if hasattr(self._flow, "compile"):
             self._flow.compile()
-        logger.info("Initialized Zuko flow:\n%s", self._flow)
+        logger.debug("Initialized Zuko flow:\n%s", self._flow)
 
     def _as_torch(self, x):
         return torch.as_tensor(x, dtype=self.dtype, device=self.device)
