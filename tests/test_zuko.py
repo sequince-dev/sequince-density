@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from orng import RandomGenerator
 from sequince.transforms import (
     AffineTransform,
     CompositeTransform,
@@ -36,9 +37,14 @@ def test_zuko_flow_transform_fits_and_round_trips() -> None:
             ),
         ]
     )
-    transform = transform.fit(particles)
-    latent, log_det = transform.forward(particles)
-    restored, inverse_log_det = transform.inverse(latent)
+    transform_rng = RandomGenerator(seed=19)
+    transform = transform.fit(particles, rng=transform_rng)
+    latent, log_det, auxiliary = transform.forward(
+        particles, rng=transform_rng
+    )
+    restored, inverse_log_det = transform.inverse(
+        latent, auxiliary=auxiliary, rng=transform_rng
+    )
 
     assert isinstance(latent, np.ndarray)
     assert latent.shape == particles.shape
