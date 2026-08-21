@@ -84,6 +84,7 @@ class ZukoFlow(Flow):
                 lr=lr,
                 batch_size=batch_size,
                 validation_fraction=validation_fraction,
+                rng=rng,
             )
 
     def _fit(
@@ -94,9 +95,10 @@ class ZukoFlow(Flow):
         lr: float = 1e-3,
         batch_size: int = 500,
         validation_fraction: float = 0.2,
+        rng=None,
     ) -> "ZukoFlow":
         x = self._as_torch(samples)
-        x_prime = self.fit_particle_transform(x, context=context)
+        x_prime = self.fit_particle_transform(x, context=context, rng=rng)
         indices = torch.randperm(x_prime.shape[0], device=x_prime.device)
         x_prime = x_prime[indices]
 
@@ -186,26 +188,28 @@ class ZukoFlow(Flow):
         with torch_random_context(rng, device=self.device), torch.no_grad():
             x_prime, log_prob = self.flow().rsample_and_log_prob((n_samples,))
         x, log_abs_det_jacobian = self.inverse_particle_transform(
-            x_prime, context=context
+            x_prime, context=context, rng=rng
         )
         return x, log_prob - log_abs_det_jacobian
 
     def sample(self, n_samples: int, context=None, *, rng=None):
         with torch_random_context(rng, device=self.device), torch.no_grad():
             x_prime = self.flow().rsample((n_samples,))
-        x, _ = self.inverse_particle_transform(x_prime, context=context)
+        x, _ = self.inverse_particle_transform(
+            x_prime, context=context, rng=rng
+        )
         return x
 
     def log_prob(self, x, context=None):
         x = self._as_torch(x)
-        x_prime, log_abs_det_jacobian = self.forward_particle_transform(
+        x_prime, log_abs_det_jacobian, _ = self.forward_particle_transform(
             x, context=context
         )
         return self.flow().log_prob(x_prime) + log_abs_det_jacobian
 
     def forward(self, x, context=None):
         x = self._as_torch(x)
-        x_prime, log_j_rescale = self.forward_particle_transform(
+        x_prime, log_j_rescale, _ = self.forward_particle_transform(
             x, context=context
         )
         z, log_abs_det_jacobian = self.flow().transform.call_and_ladj(x_prime)
