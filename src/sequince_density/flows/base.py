@@ -53,18 +53,24 @@ class Flow:
     def sample_and_log_prob(self, n_samples: int, context=None, *, rng=None):
         raise NotImplementedError
 
-    def fit_particle_transform(self, x, context=None):
+    def fit_particle_transform(self, x, context=None, *, rng=None):
         self.particle_transform = self.particle_transform.fit(
-            x, context=context
+            x, context=context, rng=rng
         )
-        transformed, _ = self.particle_transform.forward(x, context=context)
+        transformed, _, _ = self.particle_transform.forward(
+            x, context=context, rng=rng
+        )
         return transformed
 
-    def forward_particle_transform(self, x, context=None):
-        return self.particle_transform.forward(x, context=context)
+    def forward_particle_transform(self, x, context=None, *, rng=None):
+        return self.particle_transform.forward(x, context=context, rng=rng)
 
-    def inverse_particle_transform(self, x, context=None):
-        return self.particle_transform.inverse(x, context=context)
+    def inverse_particle_transform(
+        self, x, context=None, *, auxiliary=None, rng=None
+    ):
+        return self.particle_transform.inverse(
+            x, context=context, auxiliary=auxiliary, rng=rng
+        )
 
     def __new__(cls, *args, **kwargs):
         obj = super().__new__(cls)

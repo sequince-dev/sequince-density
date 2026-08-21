@@ -74,7 +74,7 @@ class FlowJax(Flow):
     def fit(self, samples, context=None, *, rng=None, **kwargs) -> FlowJax:
         values = jnp.asarray(samples, dtype=self.dtype)
         transformed = jnp.asarray(
-            self.fit_particle_transform(values, context=context),
+            self.fit_particle_transform(values, context=context, rng=rng),
             dtype=self.dtype,
         )
         fit_key = self._random_key(rng)
@@ -115,7 +115,7 @@ class FlowJax(Flow):
 
     def forward(self, samples, context=None):
         values = jnp.asarray(samples, dtype=self.dtype)
-        transformed, transform_log_det = self.forward_particle_transform(
+        transformed, transform_log_det, _ = self.forward_particle_transform(
             values,
             context=context,
         )
@@ -137,7 +137,7 @@ class FlowJax(Flow):
 
     def log_prob(self, samples, context=None):
         values = jnp.asarray(samples, dtype=self.dtype)
-        transformed, log_det = self.forward_particle_transform(
+        transformed, log_det, _ = self.forward_particle_transform(
             values,
             context=context,
         )
@@ -158,6 +158,7 @@ class FlowJax(Flow):
         values, _ = self.inverse_particle_transform(
             transformed,
             context=context,
+            rng=rng,
         )
         return values
 
@@ -170,6 +171,7 @@ class FlowJax(Flow):
         values, log_det = self.inverse_particle_transform(
             transformed,
             context=context,
+            rng=rng,
         )
         return values, log_prob - log_det
 

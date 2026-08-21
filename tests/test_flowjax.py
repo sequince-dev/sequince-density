@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from orng import RandomGenerator
 
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
@@ -26,13 +27,16 @@ def test_flowjax_fits_samples_and_round_trips() -> None:
 
     returned = flow.fit(
         particles,
+        rng=RandomGenerator(seed=19),
         max_epochs=1,
         batch_size=16,
         show_progress=False,
     )
     latent, forward_log_det = flow.forward(particles[:4])
     restored, inverse_log_det = flow.inverse(latent)
-    samples, log_prob = flow.sample_and_log_prob(5)
+    samples, log_prob = flow.sample_and_log_prob(
+        5, rng=RandomGenerator(seed=20)
+    )
 
     assert returned is flow
     assert isinstance(samples, jax.Array)
