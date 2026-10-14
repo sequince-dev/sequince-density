@@ -1,168 +1,148 @@
 # sequince-density
 
-Fitted proposal distributions and optional normalizing-flow backends for
-`sequince`.
+`sequince-density` provides density estimators for use with the `sequince` SMC
+framework, including fitted proposal distributions and normalizing flows for
+preconditioned sampling.
 
 ## Installation
+
+`sequince-density` can be installed directly from PyPI:
 
 ```bash
 pip install sequince-density
 ```
 
-## Gaussian-mixture proposal
+However, we recommend also installing the relevant dependencies for the features
+you plan to use. See below for more details.
 
-Install the scikit-learn integration with:
+## Features
+
+- Normalizing-flow adapters for Zuko (PyTorch) and FlowJAX (JAX).
+- Gaussian-mixture proposals fitted with scikit-learn.
+- Integration with Sequince's `FlowTransform` for mutation in a learned latent
+  space and `FlowProposal` for fitted proposal distributions.
+
+## Quick start
+
+### Normalizing flows
+
+Install the optional dependencies for your chosen backend:
+
+```bash
+pip install "sequince-density[zuko]"
+# Alternatively, for the JAX backend:
+pip install "sequince-density[flowjax]"
+```
+
+Fit a Zuko flow to a two-dimensional sample population, then draw samples and
+evaluate their log densities:
+
+```python
+import numpy as np
+
+from sequince_density import ZukoFlow
+
+rng = np.random.default_rng(42)
+particles = rng.normal(size=(2000, 2))
+
+flow = ZukoFlow(dims=2, flow_class="MAF", hidden_features=[32, 32])
+flow.fit(particles, n_epochs=100, batch_size=500, rng=42)
+samples, log_q = flow.sample_and_log_prob(256, rng=43)
+```
+
+`ZukoFlow` returns PyTorch tensors; `FlowJax` returns JAX arrays.
+
+For preconditioned SMC, pass an unfitted flow to `FlowTransform` and use the
+transform as the `particle_transform` argument to
+`make_standard_bayesian_smc`. The mutation step fits it to the current particle
+population:
+
+```python
+from sequince.transforms import FlowTransform
+
+transform = FlowTransform(
+    ZukoFlow(dims=2, flow_class="MAF", hidden_features=[32, 32]),
+    fit_kwargs={"n_epochs": 100, "batch_size": 500},
+)
+```
+
+### Gaussian mixture models
+
+GMM support is provided via scikit-learn and can be installed with:
 
 ```bash
 pip install "sequince-density[gmm]"
 ```
 
 ```python
-from orng import RandomGenerator
-from sequince_density import GaussianMixtureProposal
-
-proposal = GaussianMixtureProposal(n_components=4).fit(
-    particles,
-    rng=RandomGenerator(seed=122),
-)
-samples, log_q = proposal.sample_and_log_prob(
-    256,
-    rng=RandomGenerator(seed=123),
-)
-```
-
-Fitting uses scikit-learn's `GaussianMixture`. Inputs may use NumPy, PyTorch,
-JAX, or CuPy arrays; samples and densities are restored to the input backend
-and device unless an explicit `xp` is requested when sampling. Full covariance
-matrices, regularization, and checkpoint state are supported. Weighted fitting
-is not currently supported; uniform post-resampling populations are the
-intended input.
-
-## Sequince rejuvenation
-
-`sequince-density` depends on `sequince`; Sequince does not depend on this
-package. Inject the proposal into Sequince's backend-agnostic rejuvenation
-step and place it explicitly after resampling:
-
-```python
-from sequince.steps import ProposalRejuvenation
-from sequince_density import GaussianMixtureProposal
-
-rejuvenation = ProposalRejuvenation(
-    posterior,
-    GaussianMixtureProposal(n_components=8),
-)
-```
-
-This direct redraw is approximate and deliberately has no Metropolis-Hastings
-correction. Sequince fits it after resampling in the standard step order.
-
-## Available flow backends
-
-Install the Zuko integration with `pip install "sequince-density[zuko]"` or
-the FlowJAX integration with `pip install "sequince-density[flowjax]"`.
-
-```python
-from sequince_density import FlowJax, ZukoFlow
-```
-
-`ZukoFlow` wraps flows from `zuko.flows`, while `FlowJax` wraps constructors
-from `flowjax.flows`. Both satisfy the `sequince.flows.NormalizingFlow`
-protocol and return arrays in their native backend; `FlowProposal` handles any
-conversion to the SMC particle namespace.
-
-## Flow as a mutation transform
-
-Use `FlowTransform` when you want Sequince mutation steps to operate in a
-learned latent space.
-
-```python
 import numpy as np
 
-from sequince import ParticleState, make_standard_bayesian_smc
-from sequince.transforms import AffineTransform, FlowTransform
-from sequince_density import ZukoFlow
+from sequince_density import GaussianMixtureProposal
 
-rng = np.random.default_rng(123)
-dims = 2
-n_particles = 256
-
-initial_particles = rng.normal(size=(n_particles, dims))
-initial_state = ParticleState(particles=initial_particles)
-
-flow = ZukoFlow(
-    dims=dims,
-    flow_class="MAF",
-    hidden_features=[64, 64],
-    particle_transform=AffineTransform(),
-)
-
-smc, posterior, metadata = make_standard_bayesian_smc(
-    log_prior=lambda x, context=None: -0.5 * np.sum(x**2, axis=1),
-    log_likelihood=lambda x, context=None: np.zeros(x.shape[0]),
-    particle_transform=FlowTransform(
-        flow,
-        fit_kwargs={
-            "n_epochs": 100,
-            "lr": 1e-3,
-            "batch_size": 500,
-        },
-    ),
-    mutation_kwargs={"transform_refit": "per-context"},
-)
-
-result = smc.run(initial_state, rng=rng, metadata=metadata)
+particles = np.random.default_rng(42).normal(size=(2000, 2))
+proposal = GaussianMixtureProposal(n_components=4).fit(particles, rng=42)
+samples, log_q = proposal.sample_and_log_prob(256, rng=43)
 ```
 
-A `FlowTransform` is fitted on the current particle cloud when the mutation
-step prepares its transform, so you normally pass an unfitted flow adapter.
-The mutation transform fit policy controls its lifetime:
+Fitting expects particles shaped `(n_particles, n_dimensions)`. Nonuniform
+weights are not supported; use an equal-weight population, such as particles
+after resampling.
 
-- `always` fits before every mutation call.
-- `per-context` fits once per outer SMC iteration and reuses the flow across
-  repeated or alternating mutation steps.
-- `once` fits once for the lifetime of the mutation step.
+## Proposal distributions
 
-## Flow as a proposal distribution
-
-Use `FlowProposal` when you want a trained flow to provide `log q(x)` for a
-bridged target, and optionally to draw proposal samples.
+Both Gaussian mixtures and normalizing flows can provide a fitted starting
+distribution for SMC. `GaussianMixtureProposal` implements Sequince's proposal
+interface directly. Wrap a flow in `FlowProposal` to use the same interface,
+including conversion to the SMC particle backend:
 
 ```python
-import numpy as np
-
-from sequince import TemperedPosterior
 from sequince.proposals import FlowProposal
-from sequince_density import ZukoFlow
-
-training_particles = np.random.default_rng(123).normal(size=(2000, 2))
 
 proposal = FlowProposal(
-    ZukoFlow(
-        dims=2,
-        flow_class="MAF",
-        hidden_features=[64, 64],
-    ),
-    fit_kwargs={"n_epochs": 100, "lr": 1e-3, "batch_size": 500},
-).fit(training_particles, rng=123)
-
-posterior = TemperedPosterior(
-    log_prior=lambda x, context=None: -0.5 * np.sum(x**2, axis=1),
-    log_likelihood=lambda x, context=None: np.zeros(x.shape[0]),
-    log_proposal=proposal,
-)
-
-samples, log_q = proposal.sample_and_log_prob(
-    128,
-    rng=123,
-    xp=np,
-)
-values = posterior.log_prob(samples, context=None)
+    ZukoFlow(dims=2, flow_class="MAF", hidden_features=[32, 32]),
+    fit_kwargs={"n_epochs": 100, "batch_size": 500},
+).fit(particles, rng=42)
 ```
 
-`FlowProposal.sample_and_log_prob()` uses the flow backend's native
-implementation when available and otherwise falls back to `sample()` plus
-`log_prob()`. Both `GaussianMixtureProposal` and a flow wrapped by
-`FlowProposal` satisfy Sequince's `TrainableProposal` protocol, with the same
-`fit`, `sample`, `log_prob`, and `sample_and_log_prob` surface. Stochastic
-fitting and sampling both accept an explicit `rng`.
+For either fitted proposal type, pass `proposal` as `log_proposal` to
+`make_standard_bayesian_smc` and draw the initial particles from that same
+proposal. SMC then bridges from the proposal to the target posterior.
+
+In an ASPIRE-style analysis, a flow is fitted to samples from an initial
+analysis and used as the starting proposal for a new SMC run with an updated
+likelihood.
+
+Full proposal examples will be linked here once published in
+[`sequince-examples`](https://github.com/sequince-dev/sequince-examples).
+
+## Documentation
+
+See the [sequince density documentation](https://sequince.readthedocs.io/projects/sequince-density) for the SMC
+framework and its proposal and transform interfaces.
+
+## Examples
+
+The [`sequince-examples`](https://github.com/sequince-dev/sequince-examples)
+repository and corresponding documentation contain examples highlighting
+different features in `sequince`.
+
+## Contributing
+
+Bug reports, feature requests, and pull requests are welcome via the GitHub
+repository. Please see the [contributing guidelines](https://github.com/sequince-dev/sequince/blob/main/CONTRIBUTING.md)
+and [AI policy](https://github.com/sequince-dev/sequince/blob/main/AI_POLICY.md).
+
+
+## Related repositories
+
+The following repositories are part of the `sequince` ecosystem:
+
+- [`sequince`](https://github.com/sequince-dev/sequince): the main `sequince` repository
+- [`sequince-bilby`](https://github.com/sequince-dev/sequince-bilby): provides an interface for using prebuilt `sequince` samplers with `bilby`
+- [`orng`](https://github.com/sequince-dev/orng): provides cross-backend random number generation
+- [`acai`](https://github.com/sequince-dev/acai): provides array-API compatible control flow and iteration
+
+
+## License
+
+Licensed under the [MIT License](LICENSE).
