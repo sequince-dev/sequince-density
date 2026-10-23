@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import array_api_compat.torch as torch_api
 import torch
@@ -11,6 +11,9 @@ import zuko
 
 from ..utils import torch_random_context
 from .base import Flow
+
+if TYPE_CHECKING:
+    from sequince.transforms import ParticleTransform
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +27,8 @@ class ZukoFlow(Flow):
         self,
         dims: int,
         flow_class: str | Callable = "MAF",
-        particle_transform=None,
-        seed: int = 1234,
-        device: str = "cpu",
+        particle_transform: ParticleTransform | None = None,
+        device: str | torch.DeviceObjType = "cpu",
         dtype: torch.dtype | None = None,
         **kwargs,
     ) -> None:
@@ -37,8 +39,6 @@ class ZukoFlow(Flow):
             particle_transform=particle_transform,
         )
         self.dtype = resolved_dtype
-        self.seed = seed
-        torch.manual_seed(seed)
 
         if isinstance(flow_class, str):
             flow_constructor = getattr(zuko.flows, flow_class)
@@ -225,3 +225,44 @@ class ZukoFlow(Flow):
             x_prime, context=context
         )
         return x, log_j_rescale + log_abs_det_jacobian
+
+
+class ZukoFlowMatching(ZukoFlow):
+    """Flow wrapper for training Zuko flows using flow matching.
+
+    Note that this flow is only compatible with CNF flows, as flow matching is
+    not implemented for discrete flows in Zuko.
+
+    The `eta` parameter controls the amount of noise added to the target
+    velocity field during training.
+    """
+
+    def __init__(
+        self,
+        dims: int,
+        particle_transform: ParticleTransform | None = None,
+        device: str | torch.DeviceObjType = "cpu",
+        eta: float = 1e-3,
+        dtype: torch.dtype | None = None,
+        **kwargs,
+    ):
+        kwargs.setdefault("hidden_features", 4 * [100])
+        super().__init__(
+            dims,
+            device=device,
+            particle_transform=particle_transform,
+            flow_class="CNF",
+            dtype=dtype,
+            **kwargs,
+        )
+        self.eta = eta
+
+    def loss_fn(self, theta: torch.Tensor) -> torch.Tensor:
+        t = torch.rand(
+            theta.shape[:-1], dtype=theta.dtype, device=theta.device
+        )
+        t_ = t[..., None]
+        eps = torch.randn_like(theta)
+        theta_prime = (1 - t_) * theta + (t_ + self.eta) * eps
+        v = eps - theta
+        return (self.flow.transform.f(t, theta_prime) - v).square().mean()
