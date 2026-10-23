@@ -117,8 +117,8 @@ Full proposal examples will be linked here once published in
 
 ## Documentation
 
-See the [sequince density documentation](https://sequince.readthedocs.io/projects/sequince-density) for the SMC
-framework and its proposal and transform interfaces.
+See the [sequince density documentation](https://sequince.readthedocs.io/projects/sequince-density/en/latest/) for installation,
+density fitting, and integration with Sequince proposals and transforms.
 
 ## Examples
 
@@ -129,7 +129,7 @@ different features in `sequince`.
 ## Contributing
 
 Bug reports, feature requests, and pull requests are welcome via the GitHub
-repository. Please see the [contributing guidelines](https://github.com/sequince-dev/sequince/blob/main/CONTRIBUTING.md)
+repository. Please see the [contributing guidelines](CONTRIBUTING.md)
 and [AI policy](https://github.com/sequince-dev/sequince/blob/main/AI_POLICY.md).
 
 
