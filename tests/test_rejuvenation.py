@@ -52,7 +52,7 @@ def test_rejuvenation_replaces_population_and_refreshes_target(
     state = ParticleState(
         particles,
         log_weights=np.linspace(-3.0, 0.0, len(particles)),
-        log_evidence=4.25,
+        log_normalizing_constant=4.25,
         evaluation=old_evaluation,
     )
     step = ProposalRejuvenation(
@@ -65,11 +65,12 @@ def test_rejuvenation_replaces_population_and_refreshes_target(
         state, context, RandomGenerator(seed=7)
     )
 
-    assert returned_context is context
+    assert returned_context.t == context.t
+    assert returned_context.metadata == context.metadata
     assert updated.particles.shape == particles.shape
     assert not np.array_equal(updated.particles, particles)
     assert updated.log_weights == pytest.approx(-np.log(len(particles)))
-    assert updated.log_evidence == pytest.approx(4.25)
+    assert updated.log_normalizing_constant == pytest.approx(4.25)
     assert updated.evaluation is not None
     assert updated.evaluation is not old_evaluation
     expected = quadratic_posterior.evaluate(updated.particles, context)
