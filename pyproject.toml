@@ -35,8 +35,9 @@ flowjax = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sequince-dev/sequince-density"
+Homepage = "https://sequince.readthedocs.io/projects/sequince-density/en/latest/"
 Repository = "https://github.com/sequince-dev/sequince-density"
+Documentation = "https://sequince.readthedocs.io/projects/sequince-density/en/latest/"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
