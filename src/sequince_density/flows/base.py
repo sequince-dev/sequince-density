@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from types import ModuleType
 from typing import Any
 
 from sequince.transforms import IdentityTransform, ParticleTransform
@@ -15,7 +16,7 @@ class Flow:
     while remaining compatible with ``sequince.transforms.FlowTransform``.
     """
 
-    xp = None
+    xp: ModuleType | None = None
 
     def __init__(
         self,

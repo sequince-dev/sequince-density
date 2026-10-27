@@ -5,44 +5,79 @@ on:
     branches: [ main, release* ]
   pull_request:
     branches: [ main, release* ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install build and metadata validation tools
+        run: python -m pip install build twine
+      - name: Build source distribution and wheel
+        run: python -m build
+      - name: Validate distribution metadata
+        run: python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+
   tests:
-    name: Python ${{ matrix.python-version }} (${{ matrix.os }})
+    name: Python ${{ matrix.python-version }} (Sequince ${{ matrix.sequince }})
+    needs: build
 
     strategy:
       fail-fast: false
       matrix:
-        os: [Ubuntu]
         python-version: ["3.11", "3.12", "3.13"]
-    runs-on: ${{ matrix.os }}-latest
+        sequince: ["0.1.0b1"]
+        include:
+          - python-version: "3.13"
+            sequince: main
+    runs-on: ubuntu-latest
+    env:
+      JAX_PLATFORMS: cpu
 
     steps:
-    - name: Checkout repository and submodules
+    - name: Checkout tests and dependency groups
       uses: actions/checkout@v7
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Checkout sequince-dev/sequince
-      uses: actions/checkout@v7
+    - name: Download distributions
+      uses: actions/download-artifact@v8
       with:
-        repository: sequince-dev/sequince
-        ssh-key: ${{ secrets.SEQUINCE_DEPLOY_KEY }}
-        path: sequince
+        name: python-package-distributions
+        path: dist/
     - name: Install dependencies
+      env:
+        SEQUINCE_VERSION: ${{ matrix.sequince }}
       run: |
         python -m pip install --upgrade pip
-        # Install pytorch CPU version for testing
-        pip install torch --index-url https://download.pytorch.org/whl/cpu
-        # Install backends for orng
-        # Can't use cupy since it requires CUDA toolkit to be installed
-        pip install ./sequince
-        pip install -e . --group test
+        python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+        if [ "$SEQUINCE_VERSION" = main ]; then
+          python -m pip install "sequince @ git+https://github.com/sequince-dev/sequince.git@main"
+        else
+          python -m pip install "sequince==$SEQUINCE_VERSION"
+        fi
+        python -m pip install dist/*.whl --group test
+        python -m pip check
+    - name: Verify backend imports
+      run: python -c "import sklearn, torch, zuko, jax, flowjax, equinox"
     - name: Test with pytest
-      run: |
-        python -m pytest tests/
+      run: python -m pytest tests/ -ra

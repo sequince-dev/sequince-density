@@ -76,7 +76,11 @@ and tool configuration are defined in `pyproject.toml`.
 
 When developing against a local Sequince checkout, install it first, for example
 with `python -m pip install -e ../sequince`, before installing sequince-density.
-CI also installs Sequince from a checkout before running the tests.
+CI tests the built wheel against Sequince 0.1.0b1 on Python 3.11–3.13, with
+an additional Python 3.13 compatibility run against Sequince's `main` branch.
+All density backends are installed and checked for import errors before pytest
+runs. Both test and release workflows build a source distribution and wheel,
+then validate their metadata with `twine check --strict`.
 
 Use Pixi for the documentation environment, as described below. Generated lock
 files and local environments should stay out of pull requests.
