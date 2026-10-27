@@ -120,6 +120,8 @@ Full proposal examples will be linked here once published in
 See the [sequince density documentation](https://sequince.readthedocs.io/projects/sequince-density/en/latest/) for installation,
 density fitting, and integration with Sequince proposals and transforms.
 
+See the [changelog](CHANGELOG.md) for release notes and unreleased changes.
+
 ## Examples
 
 The [`sequince-examples`](https://github.com/sequince-dev/sequince-examples)
