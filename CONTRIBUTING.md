@@ -308,6 +308,10 @@ should also follow this format and describe the final change.
 
 ## Pull requests and review
 
+For each pull request with user-visible changes, update
+[CHANGELOG.md][changelog] under `Unreleased` in the same pull request. Follow
+the entry categories and guidance in the releases section below.
+
 Push your branch and open a pull request targeting `sequince-dev/sequince-density:main`:
 
 ```bash
@@ -332,13 +336,41 @@ needed.
 
 ## Releases
 
+Maintain [CHANGELOG.md][changelog] using
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Add user-visible changes
+under `Unreleased`, grouped as `Added`, `Changed`, `Deprecated`, `Removed`,
+`Fixed`, or `Security`; omit empty groups. For the first release, summarize the
+initial features under `Added`. Describe the
+effect on users, especially changes to densities, weighting, RNG behaviour,
+APIs, or checkpoint compatibility. Routine internal refactoring and CI
+maintenance do not normally need entries.
+
 Releases are coordinated by maintainers. Versions are derived from Git tags by
 `setuptools-scm`; do not maintain a separate hard-coded version number. Use tags
 such as `v0.1.0` and release notes describing user-visible changes and any
 incompatibilities.
 
+Until the first release, keep the initial feature summary under `Unreleased`
+and link that heading to the repository's commit history. When preparing a
+release, move the unreleased entries into a section headed
+`## [VERSION] - YYYY-MM-DD`, using the actual release date, and leave a fresh
+`Unreleased` section at the top. For the first beta, use a PEP 440 version such
+as `0.1.0b1` with the Git tag `v0.1.0b1`. Link its heading to the GitHub release,
+and update the `Unreleased` link to compare that tag with `HEAD`. For later
+releases, link each version heading to the comparison with the preceding tag.
+Use the version's changelog section as the GitHub release notes, and mark beta
+releases as prereleases on GitHub.
+
 Before publishing, verify the intended commit, applicable CI results, and the
-built distribution in a clean environment. Publishing a GitHub release triggers
-the PyPI workflow in `.github/workflows/publish.yml`. Check that the workflow
-completes successfully. Published distributions cannot be overwritten, so verify
-the tag and artifacts before publishing.
+built distribution in a clean environment. Check that the package version matches
+the intended tag, run `python -m twine check --strict dist/*`, and verify wheel
+installation with each supported extra independently. Confirm that the GitHub
+`release` environment and PyPI trusted publisher are configured for this
+repository.
+
+Publishing a GitHub release triggers the PyPI workflow in
+`.github/workflows/publish.yml`. Check that the workflow completes successfully
+and the published package can be installed from PyPI. Published distributions
+cannot be overwritten, so verify the tag and artifacts before publishing.
+
+[changelog]: https://github.com/sequince-dev/sequince-density/blob/main/CHANGELOG.md

@@ -24,6 +24,7 @@ Features
    gaussian_mixtures
    proposals
    examples
+   changelog
    API reference <autoapi/sequince_density/index>
    developer_guide/index
 
