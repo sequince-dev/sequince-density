@@ -6,7 +6,24 @@ import inspect
 from types import ModuleType
 from typing import Any
 
-from sequince.transforms import IdentityTransform, ParticleTransform
+from sequince.transforms import (
+    CompositeTransform,
+    IdentityTransform,
+    ParticleTransform,
+    PeriodicBoundaryTransform,
+)
+
+
+def _validate_particle_transform(transform: ParticleTransform) -> None:
+    if isinstance(transform, PeriodicBoundaryTransform):
+        raise ValueError(
+            "PeriodicBoundaryTransform is unsupported by flow adapters: "
+            "periodic wrapping is many-to-one, so a Jacobian correction "
+            "alone does not give the correct density."
+        )
+    if isinstance(transform, CompositeTransform):
+        for component in transform.transforms:
+            _validate_particle_transform(component)
 
 
 class Flow:
@@ -14,6 +31,9 @@ class Flow:
 
     This mirrors the Aspire flow surface closely enough for future migration,
     while remaining compatible with ``sequince.transforms.FlowTransform``.
+
+    Periodic particle transforms, including components of composite transforms,
+    are unsupported because these adapters do not sum over periodic images.
     """
 
     xp: ModuleType | None = None
@@ -35,6 +55,16 @@ class Flow:
             "training_loss": [],
             "validation_loss": [],
         }
+
+    @property
+    def particle_transform(self) -> ParticleTransform:
+        """Coordinate transform used for sampling and density evaluation."""
+        return self._particle_transform
+
+    @particle_transform.setter
+    def particle_transform(self, transform: ParticleTransform) -> None:
+        _validate_particle_transform(transform)
+        self._particle_transform = transform
 
     def fit(self, samples, context=None):
         raise NotImplementedError

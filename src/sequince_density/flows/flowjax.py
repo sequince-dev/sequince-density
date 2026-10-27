@@ -105,12 +105,12 @@ class FlowJax(Flow):
     def load_state_dict(self, state):
         import equinox as eqx
 
+        if state.get("particle_transform") is not None:
+            self.particle_transform = state["particle_transform"]
         self._flow = eqx.tree_deserialise_leaves(
             BytesIO(state["flow"]), self._flow
         )
         self.key = state["key"]
-        if state.get("particle_transform") is not None:
-            self.particle_transform = state["particle_transform"]
         self.fit_history = dict(state.get("fit_history", self.fit_history))
 
     def forward(self, samples, context=None):

@@ -27,6 +27,19 @@ evaluate their log densities:
 
 ``ZukoFlow`` returns PyTorch tensors; ``FlowJax`` returns JAX arrays.
 
+Particle transform restrictions
+-------------------------------
+
+The flow's ``particle_transform`` must not contain a
+``PeriodicBoundaryTransform``, including inside nested ``CompositeTransform``
+objects. Both adapters reject these transforms on construction, assignment,
+fitting, and checkpoint restoration. Periodic wrapping is many-to-one: a
+correct density would require summing over periodic images, which these
+adapters do not implement. A Jacobian correction alone is insufficient.
+
+Existing checkpoints containing periodic particle transforms are also rejected.
+Nonperiodic transforms, such as ``AffineTransform``, remain supported.
+
 Preconditioned sampling
 -----------------------
 

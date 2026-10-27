@@ -10,6 +10,7 @@ from sequince.transforms import (
     AffineTransform,
     CompositeTransform,
     FlowTransform,
+    ParticleTransform,
 )
 
 torch = pytest.importorskip("torch")
@@ -115,3 +116,30 @@ def test_checkpoint_restores_fitted_density_and_seeded_samples(
     assert fitted_flow.fit_history["training_loss"]
     assert fitted_flow.fit_history["validation_loss"]
     assert restored.fit_history == fitted_flow.fit_history
+
+
+def test_rejects_periodic_particle_transform(
+    periodic_transform: ParticleTransform,
+) -> None:
+    with pytest.raises(ValueError, match="PeriodicBoundaryTransform"):
+        ZukoFlow(dims=2, particle_transform=periodic_transform)
+
+
+def test_checkpoint_rejects_periodic_particle_transform(
+    periodic_transform: ParticleTransform,
+) -> None:
+    source = ZukoFlow(dims=2, hidden_features=[8, 8], seed=22)
+    flow = ZukoFlow(dims=2, hidden_features=[8, 8], seed=99)
+    original_transform = flow.particle_transform
+    points = torch.tensor([[0.5, -0.2], [4.0, 1.0]])
+    original_log_prob = flow.log_prob(points).detach().clone()
+    state = source.state_dict()
+    state["particle_transform"] = periodic_transform
+
+    with pytest.raises(ValueError, match="PeriodicBoundaryTransform"):
+        flow.load_state_dict(state)
+
+    assert flow.particle_transform is original_transform
+    torch.testing.assert_close(
+        flow.log_prob(points), original_log_prob, rtol=0, atol=0
+    )

@@ -11,7 +11,10 @@ jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
 pytest.importorskip("flowjax")
 
-from sequince.transforms import AffineTransform  # noqa: E402
+from sequince.transforms import (  # noqa: E402
+    AffineTransform,
+    ParticleTransform,
+)
 
 from sequince_density.flows.flowjax import FlowJax  # noqa: E402
 
@@ -117,3 +120,31 @@ def test_checkpoint_restores_fitted_density_and_rng_sequence(
     assert fitted_flow.fit_history["training_loss"]
     assert fitted_flow.fit_history["validation_loss"]
     assert restored.fit_history == fitted_flow.fit_history
+
+
+def test_rejects_periodic_particle_transform(
+    periodic_transform: ParticleTransform,
+) -> None:
+    with pytest.raises(ValueError, match="PeriodicBoundaryTransform"):
+        FlowJax(dims=2, particle_transform=periodic_transform)
+
+
+def test_checkpoint_rejects_periodic_particle_transform(
+    periodic_transform: ParticleTransform,
+) -> None:
+    source = FlowJax(dims=2, seed=22, flow_layers=1, nn_width=8, nn_depth=1)
+    source.sample(3)
+    flow = FlowJax(dims=2, seed=99, flow_layers=1, nn_width=8, nn_depth=1)
+    original_transform = flow.particle_transform
+    points = jnp.array([[0.5, -0.2], [4.0, 1.0]])
+    original_log_prob = flow.log_prob(points)
+    original_key = jax.random.key_data(flow.key)
+    state = source.state_dict()
+    state["particle_transform"] = periodic_transform
+
+    with pytest.raises(ValueError, match="PeriodicBoundaryTransform"):
+        flow.load_state_dict(state)
+
+    assert flow.particle_transform is original_transform
+    np.testing.assert_array_equal(flow.log_prob(points), original_log_prob)
+    np.testing.assert_array_equal(jax.random.key_data(flow.key), original_key)

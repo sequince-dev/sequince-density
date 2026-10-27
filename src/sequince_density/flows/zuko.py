@@ -178,9 +178,9 @@ class ZukoFlow(Flow):
         }
 
     def load_state_dict(self, state):
-        self.flow.load_state_dict(state["flow"])
         if state.get("particle_transform") is not None:
             self.particle_transform = state["particle_transform"]
+        self.flow.load_state_dict(state["flow"])
         self.fit_history = dict(state.get("fit_history", self.fit_history))
         self.flow.eval()
 
