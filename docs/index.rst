@@ -28,6 +28,14 @@ Features
    API reference <autoapi/sequince_density/index>
    developer_guide/index
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Related Packages
+   :hidden:
+
+   sequince <https://sequince.readthedocs.io/en/latest/>
+   sequince-examples <https://sequince.readthedocs.io/projects/sequince-examples/en/latest/>
+
 Related projects
 ----------------
 
