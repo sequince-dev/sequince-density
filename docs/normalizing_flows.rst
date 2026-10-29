@@ -27,6 +27,13 @@ evaluate their log densities:
 
 ``ZukoFlow`` returns PyTorch tensors; ``FlowJax`` returns JAX arrays.
 
+The ``MAF`` architecture used here is the masked autoregressive flow of
+`Papamakarios, Pavlakou, and Murray (2017)
+<https://arxiv.org/abs/1705.07057>`_, *Masked Autoregressive Flow for Density
+Estimation*. Credit the architecture you select as well as the backend
+implementation: `Zuko <https://zuko.readthedocs.io/stable/>`_ or
+`FlowJAX <https://danielward27.github.io/flowjax/>`_.
+
 Particle transform restrictions
 -------------------------------
 
@@ -42,6 +49,12 @@ Nonperiodic transforms, such as ``AffineTransform``, remain supported.
 
 Preconditioned sampling
 -----------------------
+
+Flow-preconditioned SMC is described by `Karamanis et al. (2022)
+<https://doi.org/10.1093/mnras/stac2272>`_, *Accelerating astronomical and
+cosmological inference with Preconditioned Monte Carlo*. This is the method
+paper; the separate `pocoMC software paper
+<https://arxiv.org/abs/2207.05660>`_ describes that package.
 
 For preconditioned SMC, pass an unfitted flow to ``FlowTransform`` and use the
 transform as the ``particle_transform`` argument to
