@@ -36,6 +36,21 @@ Features
    sequince <https://sequince.readthedocs.io/en/latest/>
    sequince-examples <https://sequince.readthedocs.io/projects/sequince-examples/en/latest/>
 
+Citing sequince-density
+-----------------------
+
+If you use ``sequince-density``, please cite the archived software:
+
+Williams, M. J. (2026). *sequince-dev/sequince-density*.
+Zenodo. `doi:10.5281/zenodo.23687687 <https://doi.org/10.5281/zenodo.23687687>`_.
+
+Ideally, cite the Zenodo record for the exact version used in your analysis.
+Select that version on Zenodo and export its citation in your preferred
+format, using that record's DOI. Also cite the methods and
+backends used in your analysis; see :doc:`normalizing_flows` and :doc:`gaussian_mixtures`.
+For the sampling framework, follow `Sequince's citation guidelines
+<https://sequince.readthedocs.io/en/latest/citation.html>`_.
+
 Related projects
 ----------------
 
