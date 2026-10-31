@@ -26,6 +26,7 @@ gmm = [
 zuko = [
     "torch>=2",
     "zuko>=1.6",
+    "tqdm>=4.66",
 ]
 flowjax = [
     "jax>0.5.3",
@@ -58,6 +59,7 @@ test = [
     "scikit-learn>=1.4",
     "torch>=2",
     "zuko>=1.6",
+    "tqdm>=4.66",
 ]
 dev = [
     "pre-commit",

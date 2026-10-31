@@ -34,6 +34,41 @@ Estimation*. Credit the architecture you select as well as the backend
 implementation: `Zuko <https://zuko.readthedocs.io/stable/>`_ or
 `FlowJAX <https://danielward27.github.io/flowjax/>`_.
 
+Torch training controls
+-----------------------
+
+``ZukoFlow.fit`` accepts these optional controls, all disabled by default:
+
+* ``clip_grad=None``: set a finite positive total gradient-norm limit.
+* ``lr_annealing=False``: enable cosine annealing over ``n_epochs``, starting at
+  ``lr`` and stepping after each epoch.
+* ``patience=None``: set a positive number of consecutive epochs without a
+  strictly lower validation loss before stopping. Ties count; improvement
+  resets the counter.
+* ``show_progress=False``: display epochs and training/validation losses.
+
+.. code-block:: python
+
+    flow.fit(
+        particles, n_epochs=100, clip_grad=5.0, lr_annealing=True,
+        patience=10, show_progress=True, rng=42,
+    )
+
+Pass the same options through ``fit_kwargs`` in ``FlowTransform`` or
+``FlowProposal``. See :py:meth:`~sequince_density.flows.zuko.ZukoFlow.fit`
+for all training defaults.
+
+``fit`` returns the adapter with losses for every completed epoch in
+``fit_history`` and restores the best validation parameters. With
+``validation_fraction=0``, validation is skipped, ``validation_loss`` is empty,
+and final parameters are retained; setting ``patience`` raises ``ValueError``.
+For nonzero fractions, an empty split after rounding uses all particles for
+both training and validation.
+
+Raw and transformed particles must be finite with nonempty shape
+``(n_samples, dims)``. Invalid data raises ``ValueError``; non-finite errors
+identify the stage and affected dimensions (zero-based).
+
 Particle transform restrictions
 -------------------------------
 

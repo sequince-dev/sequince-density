@@ -8,10 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Optional Zuko gradient clipping, cosine learning-rate annealing, early stopping
+  and progress display, available through flow adapters' `fit_kwargs`.
+- Zuko training-data checks before and after particle transforms, reporting
+  affected dimensions for non-finite values.
 - Software archive DOI and method references for flow preconditioning and
   masked autoregressive flows.
 - Documentation sidebar links to the main Sequince documentation and
   sequince-examples under Related Packages.
+
+### Changed
+
+- Zuko's `validation_fraction=0` skips validation and keeps final parameters,
+  with an empty validation-loss history. Combining it with `patience` raises
+  `ValueError`.
 
 ## [0.1.0b1] - 2026-10-27
 

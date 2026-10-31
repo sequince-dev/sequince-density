@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import pickle
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 from orng import RandomGenerator
+from sequince.proposals import FlowProposal
 from sequince.transforms import (
     AffineTransform,
     CompositeTransform,
@@ -13,8 +15,10 @@ from sequince.transforms import (
     ParticleTransform,
 )
 
-torch = pytest.importorskip("torch")
+pytest.importorskip("torch")
 pytest.importorskip("zuko")
+
+import torch  # noqa: E402
 
 from sequince_density.flows.zuko import ZukoFlow  # noqa: E402
 
@@ -143,3 +147,337 @@ def test_checkpoint_rejects_periodic_particle_transform(
     torch.testing.assert_close(
         flow.log_prob(points), original_log_prob, rtol=0, atol=0
     )
+
+
+class TrainableGaussian(torch.nn.Module):
+    """Unit-variance Gaussian with an observable, trainable location."""
+
+    def __init__(self, dims: int, context: int = 0) -> None:
+        super().__init__()
+        # Separate parameters distinguish total-norm from per-parameter clipping.
+        self.coordinates = torch.nn.ParameterList(
+            [torch.nn.Parameter(torch.zeros(())) for _ in range(dims)]
+        )
+        self.validation_locations: list[torch.Tensor] = []
+        self.gradient_norms: list[float] = []
+
+    @property
+    def loc(self) -> torch.Tensor:
+        return torch.stack(list(self.coordinates))
+
+    def forward(self) -> torch.distributions.Distribution:
+        if not self.training:
+            self.validation_locations.append(self.loc.detach().clone())
+            gradients = torch.stack([p.grad for p in self.coordinates])
+            self.gradient_norms.append(float(gradients.norm()))
+        return torch.distributions.Independent(
+            torch.distributions.Normal(self.loc, torch.ones_like(self.loc)), 1
+        )
+
+
+def gaussian_flow() -> ZukoFlow:
+    return ZukoFlow(
+        dims=2, flow_class=TrainableGaussian, dtype=torch.float64, device="cpu"
+    )
+
+
+@pytest.mark.parametrize("clip_grad", [None, 0.25])
+def test_gradient_clipping_bounds_total_norm(clip_grad: float | None) -> None:
+    flow = gaussian_flow()
+    flow.fit(
+        torch.tensor([[5.0, -12.0]]).repeat(8, 1),
+        n_epochs=4,
+        lr=0.1,
+        batch_size=8,
+        validation_fraction=0.25,
+        clip_grad=clip_grad,
+        rng=42,
+    )
+    norms = flow.flow.gradient_norms
+    assert len(norms) == 4
+    if clip_grad is None:
+        assert min(norms) > 10
+    else:
+        assert all(0 < norm <= clip_grad for norm in norms)
+    assert not torch.equal(flow.flow.loc, torch.zeros_like(flow.flow.loc))
+
+
+@pytest.mark.parametrize("lr_annealing", [False, True])
+def test_annealing_matches_adam_updates(lr_annealing: bool) -> None:
+    # With one batch per epoch, the Gaussian's gradient is loc - target.
+    target = torch.tensor([10.0, -10.0], dtype=torch.float64)
+    flow = gaussian_flow()
+    flow.fit(
+        target.repeat(8, 1),
+        n_epochs=5,
+        lr=0.1,
+        batch_size=8,
+        validation_fraction=0.25,
+        lr_annealing=lr_annealing,
+        rng=42,
+    )
+    loc = torch.zeros_like(target)
+    first = torch.zeros_like(target)
+    second = torch.zeros_like(target)
+    for epoch, actual in enumerate(flow.flow.validation_locations):
+        grad = loc - target
+        first = 0.9 * first + 0.1 * grad
+        second = 0.999 * second + 0.001 * grad.square()
+        rate = 0.1
+        if lr_annealing:
+            rate *= (1 + np.cos(np.pi * epoch / 5)) / 2
+        loc -= (
+            rate
+            * (first / (1 - 0.9 ** (epoch + 1)))
+            / ((second / (1 - 0.999 ** (epoch + 1))).sqrt() + 1e-8)
+        )
+        torch.testing.assert_close(actual, loc, rtol=1e-12, atol=1e-12)
+    torch.testing.assert_close(flow.flow.loc, loc, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("patience", [None, 1, 3])
+def test_patience_counts_ties(patience: int | None) -> None:
+    flow = gaussian_flow()
+    flow.fit(
+        torch.ones(8, 2),
+        n_epochs=8,
+        lr=0,
+        validation_fraction=0.25,
+        patience=patience,
+        rng=42,
+    )
+    expected = 8 if patience is None else 1 + patience
+    assert len(flow.fit_history["training_loss"]) == expected
+    assert len(flow.fit_history["validation_loss"]) == expected
+
+
+@pytest.mark.parametrize("patience", [None, 1])
+def test_patience_allows_continued_improvement(patience: int | None) -> None:
+    flow = gaussian_flow()
+    flow.fit(
+        torch.full((8, 2), 10.0),
+        n_epochs=8,
+        lr=0.1,
+        validation_fraction=0.25,
+        patience=patience,
+        rng=42,
+    )
+    losses = flow.fit_history["validation_loss"]
+    assert len(losses) == 8
+    assert all(a > b for a, b in zip(losses, losses[1:]))
+
+
+@pytest.mark.parametrize("patience", [None, 3, 5])
+def test_restores_best_validation_parameters(patience: int | None) -> None:
+    flow = gaussian_flow()
+    flow.fit(
+        torch.full((8, 2), 0.25),
+        n_epochs=20,
+        lr=0.2,
+        validation_fraction=0.25,
+        patience=patience,
+        rng=42,
+    )
+    losses = flow.fit_history["validation_loss"]
+    locations = flow.flow.validation_locations
+    best = int(np.argmin(losses))
+    assert best < len(losses) - 1
+    torch.testing.assert_close(flow.flow.loc, locations[best], rtol=0, atol=0)
+    assert len(flow.fit_history["training_loss"]) == len(losses)
+    if patience == 5:
+        # Four unsuccessful epochs precede a new best at epoch six.
+        # The counter must reset there, allowing five more epochs.
+        assert best == 5
+        assert len(losses) == 11
+    if patience is not None:
+        assert len(losses) == best + 1 + patience
+    else:
+        assert len(losses) == 20
+
+
+@pytest.mark.parametrize("validation_fraction", [0, 0.25])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_progress_preserves_seeded_real_zuko_training(
+    dtype: torch.dtype,
+    validation_fraction: float,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    particles = np.random.default_rng(21).normal(size=(32, 2))
+    flows = []
+    for show_progress in (False, True):
+        flow = ZukoFlow(dims=2, hidden_features=[8, 8], dtype=dtype)
+        state = torch.random.get_rng_state().clone()
+        assert (
+            flow.fit(
+                particles,
+                n_epochs=3,
+                batch_size=8,
+                clip_grad=0.5,
+                lr_annealing=True,
+                patience=2 if validation_fraction else None,
+                validation_fraction=validation_fraction,
+                show_progress=show_progress,
+                rng=42,
+            )
+            is flow
+        )
+        assert torch.equal(torch.random.get_rng_state(), state)
+        output = capsys.readouterr().err
+        if show_progress:
+            assert "Epochs" in output
+            assert "train_loss=" in output
+            assert ("val_loss=" in output) == bool(validation_fraction)
+        else:
+            assert output == ""
+        assert all(
+            p.dtype == dtype and p.device.type == "cpu"
+            for p in flow.flow.parameters()
+        )
+        flows.append(flow)
+    assert flows[0].fit_history == flows[1].fit_history
+    for key, value in flows[0].flow.state_dict().items():
+        torch.testing.assert_close(
+            value, flows[1].flow.state_dict()[key], rtol=0, atol=0
+        )
+
+
+@pytest.mark.parametrize("validation_fraction", [0, 0.25])
+@pytest.mark.parametrize("adapter", [FlowTransform, FlowProposal])
+def test_training_controls_through_sequince(
+    adapter: Any, validation_fraction: float
+) -> None:
+    particles = np.random.default_rng(21).normal(size=(32, 2))
+    options: dict[str, Any] = dict(
+        n_epochs=3,
+        batch_size=8,
+        clip_grad=0.5,
+        lr_annealing=True,
+        patience=2 if validation_fraction else None,
+        validation_fraction=validation_fraction,
+        show_progress=False,
+    )
+    direct = ZukoFlow(dims=2, hidden_features=[8, 8], seed=22)
+    direct.fit(particles, rng=42, **options)
+    wrapped = adapter(
+        ZukoFlow(dims=2, hidden_features=[8, 8], seed=22), fit_kwargs=options
+    ).fit(particles, rng=42)
+    assert wrapped.flow.fit_history == direct.fit_history
+    for key, value in direct.flow.state_dict().items():
+        torch.testing.assert_close(
+            value, wrapped.flow.flow.state_dict()[key], rtol=0, atol=0
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_value", [float("nan"), float("inf"), -float("inf")]
+)
+def test_rejects_nonfinite_raw_data(bad_value: float) -> None:
+    # The bounded logit clips infinities, so validation must precede it.
+    from sequince.transforms import BoundedToUnboundedTransform
+
+    flow = ZukoFlow(
+        dims=3,
+        hidden_features=[8, 8],
+        particle_transform=BoundedToUnboundedTransform(
+            {i: (0, 1) for i in range(3)}
+        ),
+    )
+    particles = torch.full((8, 3), 0.5)
+    particles[0, 0] = bad_value
+    particles[-1, 2] = bad_value
+    with pytest.raises(
+        ValueError, match=r"Raw.*non-finite.*dimensions: \[0, 2\]"
+    ):
+        flow.fit(particles, n_epochs=1, rng=42)
+
+
+class NonfiniteTransform(ParticleTransform):
+    def forward(
+        self, particles: torch.Tensor, context: Any = None, *, rng: Any = None
+    ) -> tuple[torch.Tensor, torch.Tensor, None]:
+        values = particles.clone()
+        values[0, 0] = float("nan")
+        values[-1, 2] = float("inf")
+        return values, torch.zeros(len(values)), None
+
+
+def test_rejects_nonfinite_transformed_data() -> None:
+    flow = ZukoFlow(dims=3, particle_transform=NonfiniteTransform())
+    with pytest.raises(
+        ValueError, match=r"Transformed.*non-finite.*dimensions: \[0, 2\]"
+    ):
+        flow.fit(torch.zeros(8, 3), n_epochs=1, rng=42)
+
+
+@pytest.mark.parametrize(
+    "samples", [[], [1, 2], np.zeros((0, 2)), np.zeros((8, 3))]
+)
+def test_rejects_invalid_training_shapes(samples: Any) -> None:
+    with pytest.raises(ValueError, match="Raw training data.*shape"):
+        gaussian_flow().fit(samples, n_epochs=1)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"clip_grad": 0},
+        {"clip_grad": -1},
+        {"clip_grad": float("nan")},
+        {"clip_grad": float("inf")},
+        {"patience": 0},
+        {"patience": -1},
+        {"patience": 1.5},
+        {"patience": True},
+    ],
+)
+def test_rejects_invalid_training_controls(options: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="clip_grad|patience"):
+        gaussian_flow().fit(torch.zeros(8, 2), n_epochs=1, **options)
+
+
+def test_no_validation_keeps_final_parameters() -> None:
+    flow = gaussian_flow()
+    target = torch.full((2,), 0.25, dtype=torch.float64)
+    initial_rng = torch.random.get_rng_state().clone()
+    assert (
+        flow.fit(
+            target.repeat(8, 1),
+            n_epochs=20,
+            lr=0.2,
+            validation_fraction=0,
+            rng=42,
+        )
+        is flow
+    )
+    assert torch.equal(torch.random.get_rng_state(), initial_rng)
+    assert len(flow.fit_history["training_loss"]) == 20
+    assert flow.fit_history["validation_loss"] == []
+    assert flow.flow.validation_locations == []
+    assert not flow.flow.training
+
+    # Overshooting gives an earlier best epoch. With no validation, retain
+    # the final optimizer update rather than restoring that earlier location.
+    loc = torch.nn.Parameter(torch.zeros_like(target))
+    optimizer = torch.optim.Adam([loc], lr=0.2)
+    losses = []
+    for _ in range(20):
+        optimizer.zero_grad()
+        loss = (loc - target).square().sum() / 2
+        loss.backward()
+        optimizer.step()
+        losses.append(float((loc.detach() - target).square().sum()))
+    assert losses[-1] > min(losses)
+    torch.testing.assert_close(flow.flow.loc, loc, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("adapter", [None, FlowTransform, FlowProposal])
+def test_patience_requires_validation(adapter: Any) -> None:
+    flow = gaussian_flow()
+    options: dict[str, Any] = {"validation_fraction": 0, "patience": 1}
+    with pytest.raises(
+        ValueError, match="patience requires validation_fraction"
+    ):
+        if adapter is None:
+            flow.fit(torch.ones(8, 2), rng=42, **options)
+        else:
+            adapter(flow, fit_kwargs=options).fit(torch.ones(8, 2), rng=42)
