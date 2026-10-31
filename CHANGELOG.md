@@ -8,15 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Optional Zuko training controls: total gradient-norm clipping (`clip_grad`),
-  cosine learning-rate annealing (`lr_annealing`), early stopping after
-  consecutive epochs without strict validation improvement (`patience`), and
-  opt-in epoch/loss display (`show_progress`). All are disabled by default and
-  work through Sequince flow adapters' `fit_kwargs`. Best validation parameters
-  are still restored and histories retain every completed epoch.
-- Zuko checks for invalid raw and transformed training data, with affected
-  dimensions reported for non-finite values before train/validation splitting.
-
+- Optional Zuko gradient clipping, cosine learning-rate annealing, early stopping
+  and progress display, available through flow adapters' `fit_kwargs`.
+- Zuko training-data checks before and after particle transforms, reporting
+  affected dimensions for non-finite values.
 - Software archive DOI and method references for flow preconditioning and
   masked autoregressive flows.
 - Documentation sidebar links to the main Sequince documentation and

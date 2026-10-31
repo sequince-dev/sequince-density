@@ -37,23 +37,15 @@ implementation: `Zuko <https://zuko.readthedocs.io/stable/>`_ or
 Torch training controls
 -----------------------
 
-``ZukoFlow.fit`` uses Adam with ``lr=1e-3``, ``n_epochs=100``,
-``batch_size=500`` and ``validation_fraction=0.2`` by default. Optional controls
-are disabled by default:
+``ZukoFlow.fit`` accepts these optional controls, all disabled by default:
 
-* ``clip_grad=None``: set a finite positive value to clip the total gradient
-  norm across all parameters before each optimizer step.
-* ``lr_annealing=False``: set to ``True`` for cosine annealing from ``lr`` to
-  zero over ``n_epochs``. The scheduler steps after each epoch; the first epoch
-  uses ``lr``.
-* ``patience=None``: set a positive integer to stop after that many consecutive
-  epochs without a strictly lower validation loss. Ties count as unsuccessful
-  epochs and each improvement resets the counter.
-* ``show_progress=False``: set to ``True`` to display epoch progress and training
-  and validation losses. This uses the same option name as FlowJAX and does not
-  change seeded training results.
-
-For example:
+* ``clip_grad=None``: set a finite positive total gradient-norm limit.
+* ``lr_annealing=False``: enable cosine annealing over ``n_epochs``, starting at
+  ``lr`` and stepping after each epoch.
+* ``patience=None``: set a positive number of consecutive epochs without a
+  strictly lower validation loss before stopping. Ties count; improvement
+  resets the counter.
+* ``show_progress=False``: display epochs and training/validation losses.
 
 .. code-block:: python
 
@@ -62,35 +54,19 @@ For example:
         patience=10, show_progress=True, rng=42,
     )
 
-The parameters from the best validation epoch are restored even when early
-stopping is disabled. ``fit`` returns the adapter; ``flow.fit_history`` contains
-``training_loss`` and ``validation_loss`` lists for every completed epoch,
-including unsuccessful epochs before stopping. With ``validation_fraction=0``,
-all particles are used for both training and validation. Early stopping and
-best-epoch selection then use the loss evaluated on the training population
-after each epoch, rather than an independent holdout. The same fallback applies
-if rounding the split leaves either population empty.
+Pass the same options through ``fit_kwargs`` in ``FlowTransform`` or
+``FlowProposal``. See :py:meth:`~sequince_density.flows.zuko.ZukoFlow.fit`
+for all training defaults.
 
-Training particles must have nonempty shape ``(n_samples, dims)``. Raw and
-transformed data are checked before splitting into training and validation
-populations. Non-finite values raise ``ValueError`` identifying the stage and
-affected dimensions (zero-based). Raw checks run before the particle transform
-can clip or obscure invalid values.
+The best validation parameters are always restored. ``fit`` returns the adapter,
+with losses for every completed epoch in ``fit_history``. With
+``validation_fraction=0`` (or an empty split after rounding), training and
+validation both use all particles, including for early stopping and model
+selection.
 
-All controls can also be passed in ``fit_kwargs`` to Sequince's
-``FlowTransform`` or ``FlowProposal``:
-
-.. code-block:: python
-
-    from sequince.transforms import FlowTransform
-
-    transform = FlowTransform(
-        ZukoFlow(dims=2, hidden_features=[32, 32]),
-        fit_kwargs={
-            "n_epochs": 100, "clip_grad": 5.0, "lr_annealing": True,
-            "patience": 10, "show_progress": True,
-        },
-    )
+Raw and transformed particles must be finite with nonempty shape
+``(n_samples, dims)``. Invalid data raises ``ValueError``; non-finite errors
+identify the stage and affected dimensions (zero-based).
 
 Particle transform restrictions
 -------------------------------
