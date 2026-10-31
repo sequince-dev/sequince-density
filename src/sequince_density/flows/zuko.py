@@ -10,7 +10,7 @@ import torch
 import zuko
 from tqdm.auto import tqdm
 
-from ..utils import torch_random_context
+from ..utils import torch_random_context, validate_training_data
 from .base import Flow
 
 logger = logging.getLogger(__name__)
@@ -159,9 +159,9 @@ class ZukoFlow(Flow):
         ):
             raise ValueError("patience must be a positive integer or None.")
         x = self._as_torch(samples)
-        self._validate_training_data(x, "Raw")
+        validate_training_data(x, self.dims, "Raw")
         x_prime = self.fit_particle_transform(x, context=context, rng=rng)
-        self._validate_training_data(x_prime, "Transformed")
+        validate_training_data(x_prime, self.dims, "Transformed")
         if x_prime.shape != x.shape:
             raise ValueError("Transformed training data must preserve shape.")
         indices = torch.randperm(x_prime.shape[0], device=x_prime.device)
@@ -256,20 +256,6 @@ class ZukoFlow(Flow):
         }
         self.flow.eval()
         return self
-
-    def _validate_training_data(self, x: torch.Tensor, stage: str) -> None:
-        if x.ndim != 2 or x.shape[0] == 0 or x.shape[1] != self.dims:
-            raise ValueError(
-                f"{stage} training data must have nonempty shape "
-                f"(n_samples, {self.dims})."
-            )
-        invalid = ~torch.isfinite(x)
-        if invalid.any():
-            dimensions = invalid.any(dim=0).nonzero(as_tuple=True)[0].tolist()
-            raise ValueError(
-                f"{stage} training data contains non-finite values "
-                f"in dimensions: {dimensions}"
-            )
 
     def state_dict(self):
         return {
