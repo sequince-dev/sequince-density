@@ -8,6 +8,7 @@ from typing import Callable
 import array_api_compat.torch as torch_api
 import torch
 import zuko
+from tqdm.auto import tqdm
 
 from ..utils import torch_random_context
 from .base import Flow
@@ -73,9 +74,53 @@ class ZukoFlow(Flow):
         lr: float = 1e-3,
         batch_size: int = 500,
         validation_fraction: float = 0.2,
+        clip_grad: float | None = None,
+        lr_annealing: bool = False,
+        patience: int | None = None,
+        show_progress: bool = False,
         *,
         rng=None,
     ) -> "ZukoFlow":
+        """Fit by maximum likelihood and restore the best validation epoch.
+
+        Parameters
+        ----------
+        samples : array_like, shape (n_samples, dims)
+            Nonempty, finite training particles. Transformed particles must
+            also be finite and have the same shape.
+        context : object, optional
+            Context passed to the particle transform.
+        n_epochs : int, default=100
+            Maximum number of training epochs.
+        lr : float, default=1e-3
+            Initial Adam learning rate.
+        batch_size : int, default=500
+            Maximum number of particles per training or validation batch.
+        validation_fraction : float, default=0.2
+            Fraction held out for validation. If rounding gives no validation
+            particles (including zero), or leaves no training particles, use
+            all particles for both training and validation.
+        clip_grad : float or None, default=None
+            Positive maximum total gradient norm, applied before each optimizer
+            step. None disables clipping.
+        lr_annealing : bool, default=False
+            Apply cosine learning-rate annealing from lr to zero over n_epochs,
+            stepping the scheduler after each completed epoch.
+        patience : int or None, default=None
+            Positive number of consecutive epochs without a strictly lower
+            validation loss before stopping. Improvement resets the counter;
+            ties count as unsuccessful epochs. None disables early stopping.
+        show_progress : bool, default=False
+            Show epoch progress and training and validation losses.
+        rng : RandomGenerator or int or None, optional
+            RNG for fitting, isolated from global Torch state when supplied.
+
+        Returns
+        -------
+        ZukoFlow
+            This fitted adapter. fit_history contains losses for every
+            completed epoch, including epochs after the best validation epoch.
+        """
         with torch_random_context(rng, device=self.device):
             return self._fit(
                 samples,
@@ -84,6 +129,10 @@ class ZukoFlow(Flow):
                 lr=lr,
                 batch_size=batch_size,
                 validation_fraction=validation_fraction,
+                clip_grad=clip_grad,
+                lr_annealing=lr_annealing,
+                patience=patience,
+                show_progress=show_progress,
                 rng=rng,
             )
 
@@ -95,10 +144,26 @@ class ZukoFlow(Flow):
         lr: float = 1e-3,
         batch_size: int = 500,
         validation_fraction: float = 0.2,
+        clip_grad: float | None = None,
+        lr_annealing: bool = False,
+        patience: int | None = None,
+        show_progress: bool = False,
         rng=None,
     ) -> "ZukoFlow":
+        if clip_grad is not None and (not 0 < clip_grad < float("inf")):
+            raise ValueError("clip_grad must be finite and positive or None.")
+        if patience is not None and (
+            isinstance(patience, bool)
+            or not isinstance(patience, int)
+            or patience < 1
+        ):
+            raise ValueError("patience must be a positive integer or None.")
         x = self._as_torch(samples)
+        self._validate_training_data(x, "Raw")
         x_prime = self.fit_particle_transform(x, context=context, rng=rng)
+        self._validate_training_data(x_prime, "Transformed")
+        if x_prime.shape != x.shape:
+            raise ValueError("Transformed training data must preserve shape.")
         indices = torch.randperm(x_prime.shape[0], device=x_prime.device)
         x_prime = x_prime[indices]
 
@@ -122,40 +187,65 @@ class ZukoFlow(Flow):
         )
 
         optimizer = torch.optim.Adam(self.flow.parameters(), lr=lr)
+        scheduler = (
+            torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, n_epochs)
+            if lr_annealing
+            else None
+        )
+        unsuccessful_epochs = 0
         best_state = None
         best_val_loss = float("inf")
         training_loss = []
         validation_loss = []
 
-        for _ in range(n_epochs):
-            self.flow.train()
-            train_loss = 0.0
-            n_train_batches = 0
-            for (x_batch,) in dataset:
-                loss = self.loss_fn(x_batch)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                train_loss += loss.item()
-                n_train_batches += 1
+        with tqdm(
+            range(n_epochs), desc="Epochs", disable=not show_progress
+        ) as progress:
+            for _ in progress:
+                self.flow.train()
+                train_loss = 0.0
+                n_train_batches = 0
+                for (x_batch,) in dataset:
+                    loss = self.loss_fn(x_batch)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    if clip_grad is not None:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.flow.parameters(), clip_grad
+                        )
+                    optimizer.step()
+                    train_loss += loss.item()
+                    n_train_batches += 1
 
-            self.flow.eval()
-            val_loss = 0.0
-            n_batches = 0
-            for (x_batch,) in val_dataset:
-                with torch.no_grad():
-                    val_loss += self.loss_fn(x_batch).item()
-                n_batches += 1
+                if scheduler is not None:
+                    scheduler.step()
+                self.flow.eval()
+                val_loss = 0.0
+                n_batches = 0
+                for (x_batch,) in val_dataset:
+                    with torch.no_grad():
+                        val_loss += self.loss_fn(x_batch).item()
+                    n_batches += 1
 
-            avg_val_loss = val_loss / max(n_batches, 1)
-            training_loss.append(train_loss / max(n_train_batches, 1))
-            validation_loss.append(avg_val_loss)
-            if avg_val_loss < best_val_loss:
-                best_val_loss = avg_val_loss
-                best_state = {
-                    key: value.detach().clone()
-                    for key, value in self.flow.state_dict().items()
-                }
+                avg_val_loss = val_loss / max(n_batches, 1)
+                training_loss.append(train_loss / max(n_train_batches, 1))
+                validation_loss.append(avg_val_loss)
+                if avg_val_loss < best_val_loss:
+                    unsuccessful_epochs = 0
+                    best_val_loss = avg_val_loss
+                    best_state = {
+                        key: value.detach().clone()
+                        for key, value in self.flow.state_dict().items()
+                    }
+                else:
+                    unsuccessful_epochs += 1
+                if show_progress:
+                    progress.set_postfix(
+                        train_loss=f"{training_loss[-1]:.4f}",
+                        val_loss=f"{avg_val_loss:.4f}",
+                    )
+                if patience is not None and unsuccessful_epochs >= patience:
+                    break
 
         if best_state is not None:
             self.flow.load_state_dict(best_state)
@@ -166,6 +256,20 @@ class ZukoFlow(Flow):
         }
         self.flow.eval()
         return self
+
+    def _validate_training_data(self, x: torch.Tensor, stage: str) -> None:
+        if x.ndim != 2 or x.shape[0] == 0 or x.shape[1] != self.dims:
+            raise ValueError(
+                f"{stage} training data must have nonempty shape "
+                f"(n_samples, {self.dims})."
+            )
+        invalid = ~torch.isfinite(x)
+        if invalid.any():
+            dimensions = invalid.any(dim=0).nonzero(as_tuple=True)[0].tolist()
+            raise ValueError(
+                f"{stage} training data contains non-finite values "
+                f"in dimensions: {dimensions}"
+            )
 
     def state_dict(self):
         return {
