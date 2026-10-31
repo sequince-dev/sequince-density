@@ -81,7 +81,7 @@ class ZukoFlow(Flow):
         *,
         rng=None,
     ) -> "ZukoFlow":
-        """Fit by maximum likelihood and restore the best validation epoch.
+        """Fit by maximum likelihood, restoring the best epoch when validating.
 
         Parameters
         ----------
@@ -97,9 +97,9 @@ class ZukoFlow(Flow):
         batch_size : int, default=500
             Maximum number of particles per training or validation batch.
         validation_fraction : float, default=0.2
-            Fraction held out for validation. If rounding gives no validation
-            particles (including zero), or leaves no training particles, use
-            all particles for both training and validation.
+            Fraction held out for validation. Zero skips validation and retains
+            the final parameters. For nonzero fractions, an empty split after
+            rounding uses all particles for both training and validation.
         clip_grad : float or None, default=None
             Positive maximum total gradient norm, applied before each optimizer
             step. None disables clipping.
@@ -109,7 +109,8 @@ class ZukoFlow(Flow):
         patience : int or None, default=None
             Positive number of consecutive epochs without a strictly lower
             validation loss before stopping. Improvement resets the counter;
-            ties count as unsuccessful epochs. None disables early stopping.
+            ties count as unsuccessful epochs. Requires validation; None
+            disables early stopping.
         show_progress : bool, default=False
             Show epoch progress and training and validation losses.
         rng : RandomGenerator or int or None, optional
@@ -119,7 +120,7 @@ class ZukoFlow(Flow):
         -------
         ZukoFlow
             This fitted adapter. fit_history contains losses for every
-            completed epoch, including epochs after the best validation epoch.
+            completed epoch; validation_loss is empty when validation is off.
         """
         with torch_random_context(rng, device=self.device):
             return self._fit(
@@ -158,6 +159,8 @@ class ZukoFlow(Flow):
             or patience < 1
         ):
             raise ValueError("patience must be a positive integer or None.")
+        if validation_fraction == 0 and patience is not None:
+            raise ValueError("patience requires validation_fraction > 0.")
         x = self._as_torch(samples)
         validate_training_data(x, self.dims, "Raw")
         x_prime = self.fit_particle_transform(x, context=context, rng=rng)
@@ -168,7 +171,10 @@ class ZukoFlow(Flow):
         x_prime = x_prime[indices]
 
         n_val = int(validation_fraction * x_prime.shape[0])
-        if n_val <= 0 or n_val >= x_prime.shape[0]:
+        if validation_fraction == 0:
+            x_train = x_prime
+            x_val = None
+        elif n_val <= 0 or n_val >= x_prime.shape[0]:
             x_train = x_prime
             x_val = x_prime
         else:
@@ -180,10 +186,14 @@ class ZukoFlow(Flow):
             shuffle=True,
             batch_size=min(batch_size, x_train.shape[0]),
         )
-        val_dataset = torch.utils.data.DataLoader(
-            torch.utils.data.TensorDataset(x_val),
-            shuffle=False,
-            batch_size=min(batch_size, x_val.shape[0]),
+        val_dataset = (
+            torch.utils.data.DataLoader(
+                torch.utils.data.TensorDataset(x_val),
+                shuffle=False,
+                batch_size=min(batch_size, x_val.shape[0]),
+            )
+            if x_val is not None
+            else None
         )
 
         optimizer = torch.optim.Adam(self.flow.parameters(), lr=lr)
@@ -219,6 +229,14 @@ class ZukoFlow(Flow):
 
                 if scheduler is not None:
                     scheduler.step()
+                training_loss.append(train_loss / max(n_train_batches, 1))
+                if val_dataset is None:
+                    if show_progress:
+                        progress.set_postfix(
+                            train_loss=f"{training_loss[-1]:.4f}"
+                        )
+                    continue
+
                 self.flow.eval()
                 val_loss = 0.0
                 n_batches = 0
@@ -228,7 +246,6 @@ class ZukoFlow(Flow):
                     n_batches += 1
 
                 avg_val_loss = val_loss / max(n_batches, 1)
-                training_loss.append(train_loss / max(n_train_batches, 1))
                 validation_loss.append(avg_val_loss)
                 if avg_val_loss < best_val_loss:
                     unsuccessful_epochs = 0

@@ -58,11 +58,12 @@ Pass the same options through ``fit_kwargs`` in ``FlowTransform`` or
 ``FlowProposal``. See :py:meth:`~sequince_density.flows.zuko.ZukoFlow.fit`
 for all training defaults.
 
-The best validation parameters are always restored. ``fit`` returns the adapter,
-with losses for every completed epoch in ``fit_history``. With
-``validation_fraction=0`` (or an empty split after rounding), training and
-validation both use all particles, including for early stopping and model
-selection.
+``fit`` returns the adapter with losses for every completed epoch in
+``fit_history`` and restores the best validation parameters. With
+``validation_fraction=0``, validation is skipped, ``validation_loss`` is empty,
+and final parameters are retained; setting ``patience`` raises ``ValueError``.
+For nonzero fractions, an empty split after rounding uses all particles for
+both training and validation.
 
 Raw and transformed particles must be finite with nonempty shape
 ``(n_samples, dims)``. Invalid data raises ``ValueError``; non-finite errors

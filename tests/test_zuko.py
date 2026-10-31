@@ -189,7 +189,7 @@ def test_gradient_clipping_bounds_total_norm(clip_grad: float | None) -> None:
         n_epochs=4,
         lr=0.1,
         batch_size=8,
-        validation_fraction=0,
+        validation_fraction=0.25,
         clip_grad=clip_grad,
         rng=42,
     )
@@ -212,7 +212,7 @@ def test_annealing_matches_adam_updates(lr_annealing: bool) -> None:
         n_epochs=5,
         lr=0.1,
         batch_size=8,
-        validation_fraction=0,
+        validation_fraction=0.25,
         lr_annealing=lr_annealing,
         rng=42,
     )
@@ -242,7 +242,7 @@ def test_patience_counts_ties(patience: int | None) -> None:
         torch.ones(8, 2),
         n_epochs=8,
         lr=0,
-        validation_fraction=0,
+        validation_fraction=0.25,
         patience=patience,
         rng=42,
     )
@@ -258,7 +258,7 @@ def test_patience_allows_continued_improvement(patience: int | None) -> None:
         torch.full((8, 2), 10.0),
         n_epochs=8,
         lr=0.1,
-        validation_fraction=0,
+        validation_fraction=0.25,
         patience=patience,
         rng=42,
     )
@@ -274,7 +274,7 @@ def test_restores_best_validation_parameters(patience: int | None) -> None:
         torch.full((8, 2), 0.25),
         n_epochs=20,
         lr=0.2,
-        validation_fraction=0,
+        validation_fraction=0.25,
         patience=patience,
         rng=42,
     )
@@ -295,9 +295,12 @@ def test_restores_best_validation_parameters(patience: int | None) -> None:
         assert len(losses) == 20
 
 
+@pytest.mark.parametrize("validation_fraction", [0, 0.25])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_progress_preserves_seeded_real_zuko_training(
-    dtype: torch.dtype, capsys: pytest.CaptureFixture[str]
+    dtype: torch.dtype,
+    validation_fraction: float,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     particles = np.random.default_rng(21).normal(size=(32, 2))
     flows = []
@@ -311,7 +314,8 @@ def test_progress_preserves_seeded_real_zuko_training(
                 batch_size=8,
                 clip_grad=0.5,
                 lr_annealing=True,
-                patience=2,
+                patience=2 if validation_fraction else None,
+                validation_fraction=validation_fraction,
                 show_progress=show_progress,
                 rng=42,
             )
@@ -321,7 +325,8 @@ def test_progress_preserves_seeded_real_zuko_training(
         output = capsys.readouterr().err
         if show_progress:
             assert "Epochs" in output
-            assert "train_loss=" in output and "val_loss=" in output
+            assert "train_loss=" in output
+            assert ("val_loss=" in output) == bool(validation_fraction)
         else:
             assert output == ""
         assert all(
@@ -336,15 +341,19 @@ def test_progress_preserves_seeded_real_zuko_training(
         )
 
 
+@pytest.mark.parametrize("validation_fraction", [0, 0.25])
 @pytest.mark.parametrize("adapter", [FlowTransform, FlowProposal])
-def test_training_controls_through_sequince(adapter: Any) -> None:
+def test_training_controls_through_sequince(
+    adapter: Any, validation_fraction: float
+) -> None:
     particles = np.random.default_rng(21).normal(size=(32, 2))
     options: dict[str, Any] = dict(
         n_epochs=3,
         batch_size=8,
         clip_grad=0.5,
         lr_annealing=True,
-        patience=2,
+        patience=2 if validation_fraction else None,
+        validation_fraction=validation_fraction,
         show_progress=False,
     )
     direct = ZukoFlow(dims=2, hidden_features=[8, 8], seed=22)
@@ -424,3 +433,51 @@ def test_rejects_invalid_training_shapes(samples: Any) -> None:
 def test_rejects_invalid_training_controls(options: dict[str, Any]) -> None:
     with pytest.raises(ValueError, match="clip_grad|patience"):
         gaussian_flow().fit(torch.zeros(8, 2), n_epochs=1, **options)
+
+
+def test_no_validation_keeps_final_parameters() -> None:
+    flow = gaussian_flow()
+    target = torch.full((2,), 0.25, dtype=torch.float64)
+    initial_rng = torch.random.get_rng_state().clone()
+    assert (
+        flow.fit(
+            target.repeat(8, 1),
+            n_epochs=20,
+            lr=0.2,
+            validation_fraction=0,
+            rng=42,
+        )
+        is flow
+    )
+    assert torch.equal(torch.random.get_rng_state(), initial_rng)
+    assert len(flow.fit_history["training_loss"]) == 20
+    assert flow.fit_history["validation_loss"] == []
+    assert flow.flow.validation_locations == []
+    assert not flow.flow.training
+
+    # Overshooting gives an earlier best epoch. With no validation, retain
+    # the final optimizer update rather than restoring that earlier location.
+    loc = torch.nn.Parameter(torch.zeros_like(target))
+    optimizer = torch.optim.Adam([loc], lr=0.2)
+    losses = []
+    for _ in range(20):
+        optimizer.zero_grad()
+        loss = (loc - target).square().sum() / 2
+        loss.backward()
+        optimizer.step()
+        losses.append(float((loc.detach() - target).square().sum()))
+    assert losses[-1] > min(losses)
+    torch.testing.assert_close(flow.flow.loc, loc, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("adapter", [None, FlowTransform, FlowProposal])
+def test_patience_requires_validation(adapter: Any) -> None:
+    flow = gaussian_flow()
+    options: dict[str, Any] = {"validation_fraction": 0, "patience": 1}
+    with pytest.raises(
+        ValueError, match="patience requires validation_fraction"
+    ):
+        if adapter is None:
+            flow.fit(torch.ones(8, 2), rng=42, **options)
+        else:
+            adapter(flow, fit_kwargs=options).fit(torch.ones(8, 2), rng=42)

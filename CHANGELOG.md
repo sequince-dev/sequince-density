@@ -17,6 +17,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Documentation sidebar links to the main Sequince documentation and
   sequince-examples under Related Packages.
 
+### Changed
+
+- Zuko's `validation_fraction=0` skips validation and keeps final parameters,
+  with an empty validation-loss history. Combining it with `patience` raises
+  `ValueError`.
+
 ## [0.1.0b1] - 2026-10-27
 
 First public beta release.
