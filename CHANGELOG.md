@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- An optional Coppuccino backend for fitting single copula flows with
+  unbounded marginals, with sampling, scoring, transformations, and checkpoints.
 - Software archive DOI and method references for flow preconditioning and
   masked autoregressive flows.
 - Documentation sidebar links to the main Sequince documentation and

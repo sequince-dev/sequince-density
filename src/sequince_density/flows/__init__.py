@@ -1,6 +1,7 @@
 """Normalizing-flow backend adapters."""
 
 from .base import Flow
+from .coppuccino import CoppuccinoFlow
 
 try:
     from .flowjax import FlowJax
@@ -12,4 +13,4 @@ try:
 except ImportError:  # pragma: no cover - optional backend
     ZukoFlow = None  # type: ignore[assignment,misc]
 
-__all__ = ["Flow", "FlowJax", "ZukoFlow"]
+__all__ = ["CoppuccinoFlow", "Flow", "FlowJax", "ZukoFlow"]

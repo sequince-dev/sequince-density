@@ -20,6 +20,10 @@ dynamic = [
 ]
 
 [project.optional-dependencies]
+coppuccino = [
+    "coppuccino>=2.0",
+    "jax>=0.7.2",
+]
 gmm = [
     "scikit-learn>=1.4",
 ]
@@ -50,9 +54,10 @@ include = ["sequince*"]
 
 [dependency-groups]
 test = [
+    "coppuccino>=2.0",
     "equinox",
     "flowjax",
-    "jax>0.5.3",
+    "jax>=0.7.2",
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "scikit-learn>=1.4",

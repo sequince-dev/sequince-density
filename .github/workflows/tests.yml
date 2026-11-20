@@ -78,6 +78,6 @@ jobs:
         python -m pip install dist/*.whl --group test
         python -m pip check
     - name: Verify backend imports
-      run: python -c "import sklearn, torch, zuko, jax, flowjax, equinox"
+      run: python -c "import sklearn, torch, zuko, jax, flowjax, equinox, coppuccino"
     - name: Test with pytest
       run: python -m pytest tests/ -ra
