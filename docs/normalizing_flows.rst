@@ -8,6 +8,8 @@ Install the optional dependencies for your chosen backend:
     python -m pip install "sequince-density[zuko]"
     # Alternatively, for the JAX backend:
     python -m pip install "sequince-density[flowjax]"
+    # For copula flows:
+    python -m pip install "sequince-density[coppuccino]"
 
 Fit a Zuko flow to a two-dimensional sample population, then draw samples and
 evaluate their log densities:
@@ -26,6 +28,7 @@ evaluate their log densities:
     samples, log_q = flow.sample_and_log_prob(256, rng=43)
 
 ``ZukoFlow`` returns PyTorch tensors; ``FlowJax`` returns JAX arrays.
+``CoppuccinoFlow`` uses JAX internally and returns NumPy float64 arrays.
 
 The ``MAF`` architecture used here is the masked autoregressive flow of
 `Papamakarios, Pavlakou, and Murray (2017)
@@ -34,18 +37,34 @@ Estimation*. Credit the architecture you select as well as the backend
 implementation: `Zuko <https://zuko.readthedocs.io/stable/>`_ or
 `FlowJAX <https://danielward27.github.io/flowjax/>`_.
 
+Copula flows
+------------
+
+``CoppuccinoFlow(dims=2, flow_layers=2)`` fits a single copula flow using
+`Coppuccino <https://github.com/AaronDJohnson/coppuccino>`_. It accepts the
+same ``rng`` argument as the other adapters. Options such as ``max_epochs``
+and ``batch_size`` can be passed to ``fit``. The adapter supports unbounded
+marginals and affine preprocessing. Bounded Coppuccino marginals redraw some
+samples near the walls, which changes the normalization of the proposal.
+Bounded targets can use the unbounded proposal when their log prior evaluates
+to negative infinity outside the support. Keep the target likelihood safe for
+those inputs too.
+
+Coppuccino checkpoints use pickle and can contain the fitted training
+columns. Load checkpoints from trusted sources.
+
 Particle transform restrictions
 -------------------------------
 
 The flow's ``particle_transform`` must not contain a
 ``PeriodicBoundaryTransform``, including inside nested ``CompositeTransform``
-objects. Both adapters reject these transforms on construction, assignment,
+objects. The adapters reject these transforms on construction, assignment,
 fitting, and checkpoint restoration. Periodic wrapping is many-to-one: a
 correct density would require summing over periodic images, which these
 adapters do not implement. A Jacobian correction alone is insufficient.
 
 Existing checkpoints containing periodic particle transforms are also rejected.
-Nonperiodic transforms, such as ``AffineTransform``, remain supported.
+All three adapters support ``AffineTransform``.
 
 Preconditioned sampling
 -----------------------

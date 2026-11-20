@@ -63,8 +63,11 @@ class Flow:
 
     @particle_transform.setter
     def particle_transform(self, transform: ParticleTransform) -> None:
-        _validate_particle_transform(transform)
+        self._validate_transform(transform)
         self._particle_transform = transform
+
+    def _validate_transform(self, transform: ParticleTransform) -> None:
+        _validate_particle_transform(transform)
 
     def fit(self, samples, context=None):
         raise NotImplementedError
